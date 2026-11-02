@@ -62,7 +62,7 @@ export async function studyClient(accountId:string,profileId:string,projectId?:s
   if(task==='form_draft'||task==='form_submit'){
    const key=cacheKey('form_get',{formId:a.formId}),cached=await store.record(key) as any;if(!cached)throw new AppError('OFFLINE_MISSING','Reabra o formulário com conexão antes de responder offline.',503);
    const answers=task==='form_submit'?validateSubmission(cached.definition,a.answers):effectiveAnswers(cached.definition,a.answers);
-   cached.draft={revision,answers,data:{answers,formRevision:a.formRevision}};updates[key]=cached;result={formId:a.formId,draftRevision:revision,revision,...(task==='form_submit'?{pendingSubmission:true}:{})};
+   cached.draft={revision,answers,data:{answers,formRevision:a.formRevision}};if(task==='form_submit')cached.pendingSubmission=structuredClone(a);updates[key]=cached;result={formId:a.formId,draftRevision:revision,revision,...(task==='form_submit'?{pendingSubmission:true}:{})};
   }
   if(task==='record_delete')for(const kind of ['note','term']){const records=await store.record(recordKey(kind)) as any;if(records){records.items=recordItems(records).filter((r:any)=>r.id!==a.recordId);updates[recordKey(kind)]=records;}}
   return result;
@@ -116,6 +116,8 @@ export async function studyClient(accountId:string,profileId:string,projectId?:s
   // With no pending form operation the server is authoritative: a confirmed
   // submission therefore clears the cached draft only after the server already
   // reflects it (form_get returns draft:null).
+  const pending=formOps.find(op=>op.task==='form_submit'&&!['confirmed','error','conflict'].includes(op.state));
+  merged={...merged,pendingSubmission:pending?structuredClone(pending.arguments):null};
   await store.putRecord(key,merged);
   return merged;
  }
@@ -130,7 +132,7 @@ export async function studyClient(accountId:string,profileId:string,projectId?:s
    const formId=String(op.arguments.formId);
    if(later.some(item=>formTask(item)&&item.arguments.formId===formId))return;
    const key=cacheKey('form_get',{formId}),cached=await store.record(key) as any;
-   if(cached&&cached.draft)await store.putRecord(key,{...cached,draft:null});
+   if(cached)await store.putRecord(key,{...cached,draft:null,pendingSubmission:null,submission:{id:result.submissionId,revision:result.revision,formRevision:op.arguments.formRevision,answers:op.arguments.answers}});
    return;
   }
   const kind=saveKind[op.task];
