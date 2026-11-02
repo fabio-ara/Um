@@ -5,6 +5,7 @@ import {localContext} from './local-context.ts';
 import {execute} from '../src/service.ts';
 import {sourceView} from '../src/sources.ts';
 import {getFile} from '../src/files.ts';
+import {sourceGuardFixture} from './source-guard-fixture.ts';
 const ctx=await localContext();after(ctx.close);
 test('lotes persistidos: retomada, conflito, inspeção, publicação atômica e revogação',async()=>{
  const author=await ctx.account(),student=await ctx.account(),other=await ctx.account();
@@ -71,4 +72,18 @@ test('lotes persistidos: retomada, conflito, inspeção, publicação atômica e
  assert.equal((await ctx.admin.query('select count(*)::integer as n from um.authoring_drafts where id=$1',[personal])).rows[0].n,0);
  await assert.rejects(getFile(student,item.file_path),/indisponível/);
  assert.equal((await call('data_cleanup',{operationId:uuid(),limit:100},student)).result.pending,0);
+});
+test('mudança de base retoma itens integrais por rebase explícito e nova inspeção',async()=>{
+ const author=await ctx.account(),f=await sourceGuardFixture(author),call=f.call;
+ const draftId=(await call('authoring_create',{operationId:uuid(),projectId:f.projectId,profileId:null,expectedRevision:1,baseRevision:2,nextStep:'Preparar correção'})).result.draftId;
+ await call('authoring_save',{operationId:uuid(),draftId,expectedRevision:1,nextStep:'Conferir conjunto',items:[{kind:'unit',position:0,body:f.bundle.units[0]},{kind:'coverage',position:0,body:f.bundle.coverage[0]}],inspection:f.bundle.inspection});
+ const before=(await call('authoring_items',{draftId,expectedRevision:2})).items;
+ await call('bundle_publish',{operationId:uuid(),expectedRevision:1,bundle:{...f.bundle,revision:2,baseRevision:2}});
+ const resume=await call('authoring_get',{draftId});assert.equal(resume.nextAction,'authoring_rebase');assert.deepEqual(resume.publication,{revision:2,baseRevision:3});
+ const rebase={operationId:uuid(),draftId,expectedRevision:2,expectedPublishedRevision:2,baseRevision:3,nextStep:'Reinspecionar itens preservados'};
+ const receipt=await call('authoring_rebase',rebase);assert.deepEqual(await call('authoring_rebase',rebase),receipt);
+ assert.deepEqual((await call('authoring_items',{draftId,expectedRevision:3})).items,before);assert.equal((await call('authoring_get',{draftId})).draft.inspection.completed,false);
+ await assert.rejects(call('authoring_publish',{operationId:uuid(),draftId,expectedRevision:3}));assert.equal((await call('bundle_get',{projectId:f.projectId,profileId:null})).revision,2);
+ await call('authoring_save',{operationId:uuid(),draftId,expectedRevision:3,nextStep:'Publicar após reinspeção',inspection:f.bundle.inspection});
+ await call('authoring_publish',{operationId:uuid(),draftId,expectedRevision:4});assert.equal((await call('bundle_get',{projectId:f.projectId,profileId:null})).revision,3);
 });

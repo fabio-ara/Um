@@ -53,6 +53,8 @@ export interface OfflineStore {
   putRecord(id: string, value: unknown): Promise<void>;
   record(id: string): Promise<unknown | null>;
   clear(): Promise<void>;
+  discardPreparedReads(): Promise<void>;
+  evictPackage(projectId:string,personal:boolean): Promise<void>;
   close(): void;
 }
 
@@ -655,6 +657,25 @@ class OfflineStoreImpl implements OfflineStore {
         for (const store of STORES) tx.objectStore(store).delete(range);
       }),
     );
+  };
+
+  /** Only explicitly installed packages may retain prepared textual bodies.
+   * This also removes read caches written by earlier client versions. */
+  discardPreparedReads = async (): Promise<void> => {
+    this.assertOpen();
+    await withLock(this.prefix,()=>this.transaction(['records'],'readwrite',tx=>{
+      for(const task of ['source_get','source_locate','content_get','choice_sequence'])tx.objectStore('records').delete(rangeForPrefix(this.recordKey(`read:${task}:`)));
+    }));
+  };
+
+  /** Permission changes remove prepared content without touching notes, form
+   * drafts, attempts or pending operations. */
+  evictPackage = async (projectId:string,personal:boolean): Promise<void> => {
+    this.assertOpen();const scope:Scope=personal?'personal':'common';
+    await withLock(this.prefix,()=>this.transaction(['records','packages','heads'],'readwrite',tx=>{
+      tx.objectStore('packages').delete(this.packageKey(scope,projectId));tx.objectStore('heads').delete(this.headKey(scope,projectId));
+      for(const task of ['source_get','source_locate','content_get','choice_sequence'])tx.objectStore('records').delete(rangeForPrefix(this.recordKey(`read:${task}:`)));
+    }));
   };
 
   close = (): void => {

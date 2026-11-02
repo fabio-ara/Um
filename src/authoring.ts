@@ -21,6 +21,7 @@ export const authoringSchemas={
  authoring_get:z.strictObject({draftId:id}),
  authoring_items:z.strictObject({draftId:id,expectedRevision:revision,kind:z.enum(kinds).optional(),...page}),
  authoring_create:z.strictObject({operationId:id,projectId:id,profileId:id.nullable(),expectedRevision:z.number().int().nonnegative(),baseRevision:revision,nextStep}),
+ authoring_rebase:z.strictObject({operationId:id,draftId:id,expectedRevision:revision,expectedPublishedRevision:z.number().int().nonnegative(),baseRevision:revision,nextStep}),
  authoring_save:z.strictObject({operationId:id,draftId:id,expectedRevision:revision,nextStep,items:z.array(item).max(20).default([]),remove:z.array(z.strictObject({kind:z.enum(kinds),id})).max(20).default([]),inspection:bundleSchema.shape.inspection.optional()}),
  authoring_delete:z.strictObject({operationId:id,draftId:id,expectedRevision:revision}),
 };
@@ -32,6 +33,12 @@ export async function draftRow(db:Transaction,draftId:string,lock=false){
 async function owner(db:Transaction,projectId:string,identity:Identity){
  const p=(await db.query('select * from um.projects where id=$1 for update',[projectId])).rows[0];
  ensure(p?.owner_id===identity.id,'FORBIDDEN','Esta preparação pertence ao autor do projeto.',403);return p;
+}
+async function publicationTarget(db:Transaction,p:any,profileId:string|null,expectedRevision:number,baseRevision:number){
+ const current=(await db.query('select coalesce(max(revision),0)::integer as revision from um.bundles where project_id=$1 and profile_id is not distinct from $2::uuid',[p.id,profileId])).rows[0].revision;
+ ensure(current===expectedRevision,'CONFLICT','A publicação mudou. Releia a revisão.',409);
+ ensure(profileId?baseRevision===p.active_revision:baseRevision===current+1,'STALE_BASE','A preparação deve identificar a base corrente.',409);
+ if(profileId){const part=(await db.query('select p.submission_id,s.form_revision,f.revision from um.participations p join um.submissions s on s.id=p.submission_id join um.forms f on f.id=p.form_id where p.project_id=$1 and p.profile_id=$2',[p.id,profileId])).rows[0];ensure(part&&part.form_revision===part.revision,'SUBMISSION_REQUIRED','Aguarde o envio atual do titular.',409);}
 }
 export async function authoringSummary(db:Transaction,projectId:string,offset=0,limit=10){
  const rows=(await db.query('select id,profile_id,revision,expected_revision,base_revision,status,next_step,updated_at from um.authoring_drafts where project_id=$1 order by updated_at desc,id limit $2 offset $3',[projectId,limit,offset])).rows;
@@ -53,7 +60,11 @@ export async function authoringTask(identity:Identity,task:keyof typeof authorin
   if(task==='authoring_list')return authoringSummary(db,a.projectId,a.offset,a.limit);
   if(task==='authoring_get'){
    const draft=await draftRow(db,a.draftId);
-   return {draft,counts:(await db.query('select kind,count(*)::integer as total from um.authoring_items where draft_id=$1 group by kind order by kind',[draft.id])).rows,nextAction:draft.status==='published'?'published':draft.inspection.completed&&!draft.inspection.findings.length?'authoring_publish':'authoring_save'};
+   const current=(await db.query('select coalesce(max(revision),0)::integer as revision from um.bundles where project_id=$1 and profile_id is not distinct from $2::uuid',[draft.project_id,draft.profile_id])).rows[0].revision;
+   const active=(await db.query('select active_revision from um.projects where id=$1',[draft.project_id])).rows[0]?.active_revision;
+   const baseRevision=draft.profile_id?active:current+1,stale=current!==draft.expected_revision||baseRevision!==draft.base_revision;
+   let waiting=false;if(draft.profile_id){const part=(await db.query('select s.form_revision,f.revision from um.participations p left join um.submissions s on s.id=p.submission_id left join um.forms f on f.id=p.form_id where p.project_id=$1 and p.profile_id=$2',[draft.project_id,draft.profile_id])).rows[0];waiting=!part||!part.form_revision||part.form_revision!==part.revision;}
+   return {draft,publication:{revision:current,baseRevision},counts:(await db.query('select kind,count(*)::integer as total from um.authoring_items where draft_id=$1 group by kind order by kind',[draft.id])).rows,nextAction:draft.status==='published'?'published':waiting?'await_submission':stale?'authoring_rebase':draft.inspection.completed&&!draft.inspection.findings.length?'authoring_publish':'authoring_save'};
   }
   if(task==='authoring_items'){
    const draft=await draftRow(db,a.draftId);ensure(draft.revision===a.expectedRevision,'CONFLICT','A preparação mudou. Releia seu índice.',409);
@@ -66,10 +77,7 @@ export async function authoringTask(identity:Identity,task:keyof typeof authorin
   const p=await owner(db,existing?.project_id??a.projectId,identity);
   return operation(db,identity,a.operationId,task,a,async()=>{
    if(task==='authoring_create'){
-    const current=(await db.query('select coalesce(max(revision),0)::integer as revision from um.bundles where project_id=$1 and profile_id is not distinct from $2::uuid',[p.id,a.profileId])).rows[0].revision;
-    ensure(current===a.expectedRevision,'CONFLICT','A publicação mudou. Releia a revisão.',409);
-    ensure(a.profileId?a.baseRevision===p.active_revision:a.baseRevision===current+1,'STALE_BASE','A preparação deve identificar a base corrente.',409);
-    if(a.profileId){const part=(await db.query('select p.submission_id,s.form_revision,f.revision from um.participations p join um.submissions s on s.id=p.submission_id join um.forms f on f.id=p.form_id where p.project_id=$1 and p.profile_id=$2',[p.id,a.profileId])).rows[0];ensure(part&&part.form_revision===part.revision,'SUBMISSION_REQUIRED','Aguarde o envio atual do titular.',409);}
+    await publicationTarget(db,p,a.profileId,a.expectedRevision,a.baseRevision);
     ensure(!(await db.query("select id from um.authoring_drafts where project_id=$1 and profile_id is not distinct from $2::uuid and status='draft'",[p.id,a.profileId])).rowCount,'CONFLICT','Já existe preparação aberta. Retome-a pelo índice.',409);
     const row=(await db.query('insert into um.authoring_drafts(project_id,profile_id,expected_revision,base_revision,next_step,inspection) values($1,$2,$3,$4,$5,$6) returning id',[p.id,a.profileId,a.expectedRevision,a.baseRevision,a.nextStep,JSON.stringify({kind:'ai',references:[],findings:[],completed:false})])).rows[0];
     if(a.profileId)await db.query("update um.participations set state='producing' where project_id=$1 and profile_id=$2",[p.id,a.profileId]);
@@ -79,6 +87,13 @@ export async function authoringTask(identity:Identity,task:keyof typeof authorin
    const draft=await draftRow(db,a.draftId,true);
    ensure(draft.revision===a.expectedRevision,'CONFLICT','A preparação mudou. Releia antes de editar.',409);
    ensure(draft.status==='draft','IMMUTABLE_PUBLICATION','Esta preparação já foi publicada. Abra outra revisão.',409);
+   if(task==='authoring_rebase'){
+    await publicationTarget(db,p,draft.profile_id,a.expectedPublishedRevision,a.baseRevision);
+    await db.query('update um.authoring_drafts set expected_revision=$2,base_revision=$3,next_step=$4,inspection=$5,revision=revision+1,updated_at=now() where id=$1',[draft.id,a.expectedPublishedRevision,a.baseRevision,a.nextStep,JSON.stringify({kind:'ai',references:[],findings:[],completed:false})]);
+    if(draft.profile_id)await db.query("update um.participations set state='producing' where project_id=$1 and profile_id=$2",[p.id,draft.profile_id]);
+    else await db.query("update um.projects set base_state=case when active_revision is null then 'producing' else 'correcting' end where id=$1",[p.id]);
+    return {draftId:draft.id,projectId:p.id,profileId:draft.profile_id,revision:draft.revision+1,itemsPreserved:true,inspectionRequired:true};
+   }
    if(task==='authoring_delete'){
     await db.query('delete from um.authoring_drafts where id=$1',[draft.id]);
     if(draft.profile_id)await db.query("update um.participations set state=case when active_revision is null then 'submitted' when exists(select 1 from um.bundles b where b.project_id=$1 and b.profile_id=$2 and b.revision=active_revision and b.base_revision=$3) then 'available' else 'stale' end where project_id=$1 and profile_id=$2",[p.id,draft.profile_id,p.active_revision]);

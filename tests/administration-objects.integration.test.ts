@@ -29,7 +29,7 @@ test('MCP administrável: convites, catálogos paginados, metadados históricos 
  const projectId=(await call('project_create',{operationId:uuid(),title:'Fixture vinculada',metadata:{object:{kind:'theme',workIds:[],subject:'Sintético'},scope:'Fragmento',language:'pt',audience:'Teste',configuration:{editorial:{},instructional:{}}}})).result.projectId;
  await call('source_attach',{operationId:uuid(),projectId,sourceId});await assert.rejects(call('source_delete',{operationId:uuid(),sourceId,expectedRevision:2}),/vinculada/);
  await call('source_revise',{operationId:uuid(),sourceId,expectedRevision:2,metadata:{...metadata,title:'Outra correção'},reason:'Correção após vínculo'});
- assert.equal((await call('project_get',{projectId})).project.baseState,'correcting');
+ assert.equal((await call('project_get',{projectId})).project.baseState,'preparing');
  await call('source_detach',{operationId:uuid(),projectId,sourceId});
  const paths=(await ctx.admin.query('select path from um.files where source_id=$1',[sourceId])).rows.map(x=>x.path);
  const deletion={operationId:uuid(),sourceId,expectedRevision:3};await call('source_delete',deletion);await call('source_delete',deletion);

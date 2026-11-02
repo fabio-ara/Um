@@ -29,13 +29,13 @@ async function sourceRow(identity:Identity,sourceId:string,sourceRevision?:numbe
  return transaction(identity,async db=>{
   const current=(await db.query('select * from um.sources where id=$1',[sourceId])).rows[0];ensure(current,'NOT_FOUND','Fonte indisponível.',404);
   const version=(await db.query('select * from um.source_revisions where source_id=$1 and revision=$2',[sourceId,sourceRevision??current.revision])).rows[0];ensure(version,'NOT_FOUND','Revisão indisponível.',404);
-  return {...current,...version,originalSha256:current.sha256};
+  return {...current,...version,originalSha256:current.sha256,effectiveOfflineAllowed:current.metadata.rights.offlineAllowed};
  });
 }
 export async function sourceView(identity:Identity,sourceId:string,sourceRevision?:number){
  const row=await sourceRow(identity,sourceId,sourceRevision);
  const body=JSON.parse((await getFile(identity,row.body_file)).toString('utf8'));
- return {id:sourceId,revision:row.revision,blocks:body.blocks as SourceBlock[],metadata:row.metadata,changeReason:row.change_reason,sha256:row.sha256,originalSha256:row.originalSha256};
+ return {id:sourceId,revision:row.revision,blocks:body.blocks as SourceBlock[],metadata:row.metadata,offlineAllowed:row.effectiveOfflineAllowed,changeReason:row.change_reason,sha256:row.sha256,originalSha256:row.originalSha256};
 }
 async function indexSource(db:Transaction,identity:Identity,sourceId:string,sourceRevision:number,blocks:SourceBlock[],offlineAllowed:boolean){
  // Same source/revision cannot be indexed twice, even across operation IDs.
@@ -60,7 +60,7 @@ async function sourcePage(identity:Identity,sourceId:string,version:number|undef
  if(!data.total){const source=await sourceView(identity,sourceId,row.revision);return {...source,blocks:source.blocks.slice(offset,offset+limit),total:source.blocks.length,offset,complete:offset===0&&source.blocks.length<=limit};}
  const blocks:SourceBlock[]=[];
  for(const p of data.pages){const body=JSON.parse((await getFile(identity,p.file_path)).toString('utf8'));blocks.push(...body.blocks.slice(Math.max(0,offset-p.first_position),Math.min(body.blocks.length,offset+limit-p.first_position)));}
- return {id:sourceId,revision:row.revision,metadata:row.metadata,changeReason:row.change_reason,sha256:row.sha256,originalSha256:row.originalSha256,blocks,total:data.total,offset,complete:offset===0&&data.total<=limit};
+ return {id:sourceId,revision:row.revision,metadata:row.metadata,offlineAllowed:row.effectiveOfflineAllowed,changeReason:row.change_reason,sha256:row.sha256,originalSha256:row.originalSha256,blocks,total:data.total,offset,complete:offset===0&&data.total<=limit};
 }
 export async function sourceTask(identity:Identity,task:keyof typeof sourceSchemas,input:unknown):Promise<unknown>{
  const args=sourceSchemas[task].parse(input) as any;
@@ -80,10 +80,14 @@ export async function sourceTask(identity:Identity,task:keyof typeof sourceSchem
   const source=await sourceView(identity,args.sourceId,args.sourceRevision);
   return transaction(identity,db=>operation(db,identity,args.operationId,task,args,async()=>{await indexSource(db,identity,source.id,source.revision,source.blocks,source.metadata.rights.offlineAllowed);return {sourceId:source.id,revision:source.revision,indexed:true};}));
  }
- if(task==='source_attach')return transaction(identity,db=>operation(db,identity,args.operationId,task,args,async()=>{await db.query('insert into um.project_sources(project_id,source_id) values($1,$2) on conflict do nothing',[args.projectId,args.sourceId]);return {projectId:args.projectId,sourceId:args.sourceId};}));
+ if(task==='source_attach')return transaction(identity,db=>operation(db,identity,args.operationId,task,args,async()=>{
+  ensure((await db.query('select um.lock_source($1) as revision',[args.sourceId])).rows[0].revision,'NOT_FOUND','Fonte indisponível.',404);
+  ensure((await db.query('select id from um.projects where id=$1 and owner_id=$2 for update',[args.projectId,identity.id])).rowCount,'FORBIDDEN','Só o autor altera as fontes do projeto.',403);
+  await db.query('insert into um.project_sources(project_id,source_id) values($1,$2) on conflict do nothing',[args.projectId,args.sourceId]);return {projectId:args.projectId,sourceId:args.sourceId};
+ }));
  if(task==='source_detach')return transaction(identity,db=>operation(db,identity,args.operationId,task,args,async()=>{
-  ensure((await db.query('select um.project_owner($1) as allowed',[args.projectId])).rows[0].allowed,'FORBIDDEN','Só o autor altera as fontes do projeto.',403);
-  ensure(!(await db.query("select 1 from um.bundles where project_id=$1 and profile_id is null and manifest->'sourceRevisions' ? $2 limit 1",[args.projectId,args.sourceId])).rowCount,'SOURCE_IN_USE','Fonte usada em publicação preservada. Prepare outro projeto para mudar esse alcance.',409);
+  ensure((await db.query('select id from um.projects where id=$1 and owner_id=$2 for update',[args.projectId,identity.id])).rowCount,'FORBIDDEN','Só o autor altera as fontes do projeto.',403);
+  ensure(!(await db.query('select um.source_link_published($1,$2) as used',[args.projectId,args.sourceId])).rows[0].used,'SOURCE_IN_USE','Fonte usada em publicação preservada. Prepare outro projeto para mudar esse alcance.',409);
   await db.query('delete from um.project_sources where project_id=$1 and source_id=$2',[args.projectId,args.sourceId]);return {projectId:args.projectId,sourceId:args.sourceId,detached:true};
  }));
  if(task==='source_delete'){

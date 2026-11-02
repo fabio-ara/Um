@@ -34,6 +34,7 @@ const detailed:Partial<Record<TaskName,string>>={
  authoring_create:'Abre preparação persistida da próxima revisão comum ou pessoal. Uma preparação aberta por alcance; a anterior publicada continua disponível.',
  authoring_save:'Grava lote de até 20 itens completos e a próxima etapa exata. Use revisão esperada e recibo estável. Mudança de conteúdo invalida inspeção anterior.',
  authoring_items:'Recupera conteúdo integral paginado da preparação na revisão indicada. Não resuma conteúdo para contornar transporte.',
+ authoring_rebase:'Muda explicitamente a revisão de destino/base de uma preparação aberta, preservando seus itens e invalidando a inspeção. Revise âncoras, referências e justificativas antes de publicar.',
  authoring_publish:'Publica atomicamente a preparação persistida após inspeção e validações editoriais, de fontes, autorização e respostas. Não exige retransmitir seus lotes.',
  profile_control:'Controle explícito do titular: revogar acesso do criador, tornar perfil público/privado ou excluir o perfil e derivados. Publicar perfil não publica respostas ou notas.',
  library_merge:'Funde entidades da mesma espécie e redireciona vínculos do acervo efetivo do autor, preservando aliases e evidências.',

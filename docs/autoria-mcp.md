@@ -13,8 +13,12 @@ Para uma produção extensa:
 
 Cada escrita usa uma `operationId` estável. Após resposta perdida, consulte `operation_get`; não invente outra tentativa. Revisão conflitante exige releitura. Preparação publicada é imutável; abra outra preparação para a próxima publicação. `authoring_delete` abandona apenas uma preparação ainda aberta, enfileirando seus arquivos para remoção. Perfis exportam também os índices de suas preparações e arquivos permitidos pelos direitos. Revogação corta o acesso do antigo criador, inclusive aos rascunhos.
 
+Se outra publicação mudar a base durante a preparação, `authoring_rebase` registra explicitamente a nova base e a revisão publicada esperada, preservando os itens já gravados. Isso invalida a inspeção; o autor deve revisar âncoras, unidades, recursos e justificativas. Não há realinhamento nem personalização automáticos.
+
 `invite_list` recupera convites paginados, sem devolver tokens nem seus hashes. `catalog_list` pagina os métodos e recursos efetivos da conta. A edição dos parâmetros do projeto usa `project_update.metadata.configuration`, separando decisões editoriais e instrucionais.
 
 `source_revise` aceita texto, metadados ou ambos e exige motivo e revisão esperada. Revisões conservam os metadados e os bytes anteriores; `source_history` permite consultá-las. Corrigir uma fonte sinaliza correção nos projetos dependentes, sem alterar material publicado. `source_detach` só retira vínculos ainda não usados por publicação; `source_delete` recusa fontes ainda vinculadas a qualquer projeto. A exclusão dos bytes passa pela fila de remoção e pela API de Storage.
+
+Permissões de arquivo vigentes também limitam a entrega de revisões antigas. Ao reconectar, o aplicativo confere as revisões instaladas e retira pacotes cuja permissão offline terminou, conservando notas, rascunhos de formulário e operações pendentes. Textos consultados online só ficam disponíveis offline quando integram um pacote permitido preparado explicitamente. Uma cópia exportada para fora do aplicativo não pode ser recolhida pelo serviço.
 
 Essas tarefas fazem parte do catálogo MCP e não oferecem SQL arbitrário. A prova local por API/SDK não certifica anexo nem consentimento no host ChatGPT Web.

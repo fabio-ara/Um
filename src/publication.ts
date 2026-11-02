@@ -24,7 +24,12 @@ export const publicationReadTasks=new Set(['bundle_get','content_get','reasons_g
 export async function published(identity:Identity,projectId:string,profileId:string|null,version?:number):Promise<PublishedManifest>{
  return transaction(identity,async db=>{
   const row=(await db.query("select manifest from um.bundles where project_id=$1 and profile_id is not distinct from $2::uuid and status='published' and ($3::integer is null or revision=$3) order by revision desc limit 1",[projectId,profileId,version??null])).rows[0];
-  ensure(row,'NOT_FOUND','Conteúdo publicado indisponível.',404);return row.manifest;
+  ensure(row,'NOT_FOUND','Conteúdo publicado indisponível.',404);
+  const manifest=row.manifest as PublishedManifest;
+  const allowed=new Set((await db.query('select path from um.files where path=any($1::text[]) and offline_allowed',[manifest.files.map(f=>f.path)])).rows.map(f=>f.path));
+  // The immutable editorial snapshot stays in SQL. The delivery view applies
+  // current file permissions, including to older published revisions.
+  return {...manifest,files:manifest.files.map(f=>({...f,offlineAllowed:f.offlineAllowed&&allowed.has(f.path)})),sourceIndex:manifest.sourceIndex.map(s=>({...s,original:s.original&&allowed.has(s.original)?s.original:null}))};
  });
 }
 export async function content(identity:Identity,manifest:PublishedManifest,contentId:string){const item=manifest.index.find(x=>x.id===contentId);ensure(item,'NOT_FOUND','Item indisponível nesta revisão.',404);return JSON.parse((await getFile(identity,item.file)).toString('utf8'));}
@@ -74,12 +79,13 @@ export async function publicationTask(identity:Identity,task:keyof typeof public
   const reasonIds=new Set(a.reasons.map((r:any)=>r.resourceId));ensure([...b.resources,...b.choices].every(x=>reasonIds.has(x.id)),'REASONS_REQUIRED','Documente a relação entre respostas e cada complemento pessoal.');
  }else{ensure(!a.reasons.length,'PRIVATE_REASON','Justificativas pessoais não pertencem ao padrão.');ensure(b.baseRevision===b.revision,'REVISION','A base comum identifica a própria revisão.');}
  return transaction(identity,db=>operation(db,identity,a.operationId,task,intent,async()=>{
+  for(const [sourceId,s]of [...sources].sort(([a],[b])=>a.localeCompare(b))){const live=(await db.query('select um.lock_source($1) as revision',[sourceId])).rows[0];ensure(live?.revision===s.revision,'STALE_SOURCE','Uma fonte mudou durante a preparação.',409);}
   await db.query('select id from um.projects where id=$1 for update',[b.projectId]);
   if(prepared){const currentDraft=await draftRow(db,prepared.id,true);ensure(currentDraft.revision===prepared.revision&&currentDraft.status==='draft','CONFLICT','A preparação mudou durante a publicação.',409);}
   const project=await projectRow(db,b.projectId);
+  ensure(project.revision===p.revision&&JSON.stringify(project.sourceIds)===JSON.stringify(p.sourceIds),'CONFLICT','O projeto ou suas fontes mudaram durante a preparação.',409);
   const current=(await db.query("select coalesce(max(revision),0) as revision from um.bundles where project_id=$1 and profile_id is not distinct from $2::uuid and status='published'",[b.projectId,b.profileId])).rows[0].revision;
   ensure(current===a.expectedRevision&&b.revision===current+1,'CONFLICT','A publicação mudou. Releia a revisão.',409);
-  for(const [sourceId,s]of sources){const live=(await db.query('select revision from um.sources where id=$1 for share',[sourceId])).rows[0];ensure(live?.revision===s.revision,'STALE_SOURCE','Uma fonte mudou durante a preparação.',409);}
   if(b.profileId){
    ensure(project.activeRevision===b.baseRevision,'STALE_BASE','Base alterada durante a preparação.',409);
    const part=(await db.query('select * from um.participations where project_id=$1 and profile_id=$2 for update',[b.projectId,b.profileId])).rows[0];ensure(part?.submission_id,'SUBMISSION_REQUIRED','A segunda tomada exige respostas enviadas pelo titular.',409);

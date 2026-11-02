@@ -7,6 +7,7 @@ import type {QueuedOperation,Receipt,Choice} from '../contracts.ts';
 import type {PublishedManifest} from '../publication.ts';
 import type {StudyApi} from './dom.ts';
 const writable=new Set(['form_draft','form_submit','reader_state_save','note_save','term_save','record_delete','attempt_submit','time_record','comment_add','comment_edit','comment_remove','note_share','observation_add']);
+const preparedReads=new Set(['source_get','source_locate','content_get','choice_sequence']);
 const stable=(v:any):string=>JSON.stringify(v,(_k,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x);
 const isAuth=(e:unknown)=>e instanceof AppError&&(e.status===401||e.status===403);
 const saveKind:Record<string,string>={reader_state_save:'state',note_save:'note',term_save:'term',attempt_submit:'attempt',time_record:'time'};
@@ -31,6 +32,7 @@ function projectionFor(op:QueuedOperation,kind:string):ReaderRecord|null{
 function formTask(op:QueuedOperation):boolean{return op.task==='form_draft'||op.task==='form_submit';}
 export async function studyClient(accountId:string,profileId:string,projectId?:string){
  const store=await openOffline(accountId,profileId);let syncing:Promise<void>|null=null,closed=false;
+ await store.discardPreparedReads();
  const remote=(task:string,args:Record<string,unknown>)=>sessionRemote(task,args,accountId);
  const fetchFile=(path:string)=>sessionFile(path,accountId);
  async function active(){if(closed)throw new AppError('UNAUTHENTICATED','Este estudo foi fechado. Reabra na conta atual.',401);await requireAccount(accountId);if(closed)throw new AppError('UNAUTHENTICATED','Este estudo foi fechado.',401);}
@@ -46,14 +48,14 @@ export async function studyClient(accountId:string,profileId:string,projectId?:s
   }
   return {recordId,revision};
  }
- async function localEffect(task:string,a:any,updates:Record<string,unknown>){
+ async function localEffect(task:string,a:any,updates:Record<string,unknown>,loadedQuestion?:Choice){
   const recordId=a.recordId||a.operationId,revision=(a.expectedRevision||0)+1;let result:any={recordId,revision},kind:string|undefined,data:any;
   if(task==='reader_state_save'){kind='state';data=a.state;}
   if(task==='note_save'){kind='note';data={anchor:a.anchor,text:a.text};}
   if(task==='term_save'){kind='term';data={anchor:a.anchor,term:a.term,definition:a.definition};}
   if(task==='time_record'){kind='time';data={unitId:a.unitId,seconds:a.seconds,mode:a.mode||'reading',event:a.event||'interval',createdAt:new Date().toISOString()};}
   if(task==='attempt_submit'){
-   const q=await packaged('content_get',{projectId,profileId,revision:a.bundleRevision,contentId:a.questionId}) as Choice;
+   const q=loadedQuestion??await packaged('content_get',{projectId,profileId,revision:a.bundleRevision,contentId:a.questionId}) as Choice;
    data=makeAttempt(q,a.optionId,profileId,a.sequenceId,a.operationId,a.createdAt);kind='attempt';result={recordId,revision:1,correct:data.correct,feedback:q.options.find(o=>o.id===a.optionId)!.feedback};
   }
   if(kind){const records=(await store.record(recordKey(kind)) as any)||{items:[]};records.items=recordItems(records).filter((r:any)=>r.id!==recordId);records.items.push({id:recordId,revision,data});updates[recordKey(kind)]=records;}
@@ -150,6 +152,14 @@ export async function studyClient(accountId:string,profileId:string,projectId?:s
   syncing=(async()=>{
    let authFailure:AppError|null=null;
    if(profileId!=='account')try{await remote('profile_get',{profileId});}catch(e){if(isAuth(e)||(e instanceof AppError&&e.status===404)){await clearStore();throw e;}throw e;}
+   if(projectId)for(const personal of [false,true]){
+    const installed=await store.package(projectId,personal);if(!installed)continue;
+    try{
+     const current=await remote('bundle_get',{projectId,profileId:personal?profileId:null,revision:installed.manifest.revision}) as PublishedManifest;
+     const allowed=new Set(current.files.filter(f=>f.offlineAllowed).map(f=>f.path));
+     if(Object.keys(installed.files).some(path=>!allowed.has(path)))await store.evictPackage(projectId,personal);
+    }catch(e){if(e instanceof AppError&&e.status===404)await store.evictPackage(projectId,personal);else throw e;}
+   }
    const receipts:Receipt[]=[];
    const send=async(op:QueuedOperation)=>{try{const receipt=await remote(op.task,op.arguments) as Receipt;receipts.push(receipt);return receipt;}catch(e){if(isAuth(e)&&!authFailure)authFailure=e as AppError;throw e;}};
    const recover=async(id:string)=>{try{const receipt=await remote('operation_get',{operationId:id}) as Receipt|null;if(receipt)receipts.push(receipt);return receipt;}catch(e){if(isAuth(e)&&!authFailure)authFailure=e as AppError;throw e;}};
@@ -195,7 +205,7 @@ export async function studyClient(accountId:string,profileId:string,projectId?:s
    if(!existing){
     const updates:Record<string,unknown>={};
     // Prepare local projection before enqueue: invalid local answers never enter the queue.
-    try{projected=await localEffect(task,args,updates);}catch(e){if(navigator.onLine&&task==='attempt_submit'){const q=await remote('content_get',{projectId,profileId,revision:args.bundleRevision,contentId:args.questionId});await store.putRecord(cacheKey('content_get',{projectId,profileId,revision:args.bundleRevision,contentId:args.questionId}),q);projected=await localEffect(task,args,updates);}else throw e;}
+    try{projected=await localEffect(task,args,updates);}catch(e){if(navigator.onLine&&task==='attempt_submit'){const q=await remote('content_get',{projectId,profileId,revision:args.bundleRevision,contentId:args.questionId}) as Choice;projected=await localEffect(task,args,updates,q);}else throw e;}
     await store.enqueue({id:op,accountId,profileId,task,arguments:args,state:'pending',createdAt:new Date().toISOString()},updates);
    }else{
     // Idempotent retry: keep the already-projected revision/data. Do not push
@@ -211,7 +221,7 @@ export async function studyClient(accountId:string,profileId:string,projectId?:s
   }
   if(navigator.onLine)try{
    const result=await remote(task,args),merged=await reconcileRead(task,args,result);
-   if(task!=='reader_records'&&task!=='form_get')await store.putRecord(cacheKey(task,args),merged);
+   if(task!=='reader_records'&&task!=='form_get'&&!preparedReads.has(task))await store.putRecord(cacheKey(task,args),merged);
    await active();
    return merged;
   }catch(e){
@@ -222,6 +232,6 @@ export async function studyClient(accountId:string,profileId:string,projectId?:s
   }
   const result=await packaged(task,args);await active();return result;
  };
- async function download(){await active();if(!projectId)throw Error('Estudo não selecionado.');try{await sync();const common=await remote('bundle_get',{projectId,profileId:null}) as PublishedManifest;await store.install(common,file=>fetchFile(file.path));try{const personal=await remote('bundle_get',{projectId,profileId}) as PublishedManifest;await store.install(personal,file=>fetchFile(file.path));}catch(e){if(!(e instanceof AppError&&e.status===404))throw e;}await active();return {downloaded:true};}catch(e){if(isAuth(e))await clearStore();throw e;}}
+ async function download(){await active();if(!projectId)throw Error('Estudo não selecionado.');try{await sync();const common=await remote('bundle_get',{projectId,profileId:null}) as PublishedManifest;await store.install(common,file=>fetchFile(file.path));try{const personal=await remote('bundle_get',{projectId,profileId}) as PublishedManifest;await store.install(personal,file=>fetchFile(file.path));}catch(e){if(!(e instanceof AppError&&e.status===404))throw e;}await active();return {downloaded:common.files.some(f=>f.offlineAllowed)};}catch(e){if(isAuth(e))await clearStore();throw e;}}
  return {api,store,sync,download,close:()=>{closed=true;store.close();}};
 }
