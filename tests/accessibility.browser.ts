@@ -38,3 +38,12 @@ test('leitor mantém composição e controles em 320/390/480 e desktop, claro e 
  }
  await writeFile('.local/proofs/reader-visual-metrics.json',JSON.stringify(metrics,null,2));
 });
+
+test('painel de conexão sobrevive à troca de aba e prepara o pacote explicitamente',async({page})=>{
+ await page.goto('/');await page.getByRole('button',{name:'Conta',exact:true}).click();await page.getByLabel('E-mail',{exact:true}).fill(demo.students[0].credentials.email);await page.getByLabel('Senha',{exact:true}).fill(demo.students[0].credentials.password);await page.getByRole('button',{name:'Entrar',exact:true}).click();
+ await page.locator(`[data-action=reader][data-project="${demo.projectId}"]`).click();await expect(page.locator('.tab-list')).toBeVisible();
+ const toggle=page.getByRole('button',{name:'Conexão e sincronização',exact:true});await toggle.click();const prepare=page.getByRole('button',{name:'Preparar este estudo para uso offline',exact:true});await expect(prepare).toBeVisible();
+ await page.locator('.tab-list>summary').click();await page.getByRole('tab',{name:'Persuadir e dizer a verdade',exact:true}).click();
+ await expect(prepare).toBeVisible();await prepare.click();await expect(page.locator('#live')).toHaveText('Estudo preparado neste dispositivo.');
+ await toggle.click();await expect(prepare).toHaveCount(0);await expect(toggle).toHaveAttribute('aria-expanded','false');
+});
