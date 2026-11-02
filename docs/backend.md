@@ -17,6 +17,12 @@ Configuração hospedada: `SUPABASE_URL`, chave pública `SUPABASE_ANON_KEY` ou
 `API_ORIGIN` aponta para a função Um. Chaves administrativas são rejeitadas na
 configuração pública. Segredos ficam no ambiente de execução, fora do frontend.
 
+No Supabase, `SUPABASE_DB_URL` já é fornecida ao runtime. A migração de papel
+hospedado permite que sua conexão `postgres` assuma `um_oauth_server` durante
+as transações do broker. Esse papel não tem login e não é concedido a `anon`
+ou `authenticated`; as operações do usuário continuam assumindo `authenticated`
+com as claims verificadas. Não alterar credenciais ou hooks dos outros produtos.
+
 Antes de qualquer migração no projeto compartilhado, confira o inventário, faça
 backup de todos os schemas de domínio e Auth/Storage e copie os objetos pela API.
 Restaure em uma instância isolada e compare cada tabela por contagem e SHA256,
