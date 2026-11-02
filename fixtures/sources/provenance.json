@@ -1,0 +1,31 @@
+{
+  "perseus": {
+    "files": [
+      "apology-grc2.xml",
+      "apology-eng2.xml"
+    ],
+    "revision": "a6eb0cc3e6f6e382934a2c8b33577d2fb4371e00",
+    "license": "CC-BY-SA-4.0",
+    "repository": "https://github.com/PerseusDL/canonical-greekLit",
+    "sha256": {
+      "apology-grc2.xml": "6077e9014cf806d7d70e22133946125dc222e9ff8c6207ca6c324993ee95a8a9",
+      "apology-eng2.xml": "09ae91e79022297d5bc98d032d3e2834f908aab25652f3489425743eacee840a"
+    }
+  },
+  "map": {
+    "evidence": "https://www.naturalearthdata.com/about/terms-of-use/",
+    "revision": "ca96624a56bd078437bca8184e78163e5039ad19",
+    "license": "Public domain",
+    "repository": "https://github.com/nvkelso/natural-earth-vector",
+    "file": "public/map/land.geojson"
+  },
+  "analects": {
+    "file": "analects-legge.txt",
+    "url": "https://www.gutenberg.org/ebooks/3330",
+    "edition": "James Legge, English translation",
+    "license": "Historical public-domain translation; distributor license retained in the complete fixture",
+    "sha256": "a42433a069290280b52f13cd5832a74aa6ecd6cd4e881fa572ccb34e92e5807a",
+    "excerpt": "Book II, first CHAP. XVII.; end at next CHAP. heading (the acquired file repeats XVII for the next section).",
+    "limitations": "Translation only; no reconstructed Chinese original; no historical influence inferred from comparison."
+  }
+}

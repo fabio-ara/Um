@@ -1,0 +1,52 @@
+import {test} from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID as uuid} from 'node:crypto';
+import {localContext} from './local-context.ts';
+import {personalStudyFixture} from './personal-study-fixture.ts';
+import {execute} from '../src/service.ts';
+import {transaction} from '../src/db.ts';
+
+test('parâmetros por alcance preservam intenção, requisitos, isolamento e revisão aplicada',async()=>{
+ const ctx=await localContext(),owner=await ctx.account(),outsider=await ctx.account();
+ try{
+  const f=await personalStudyFixture(owner);
+  const initial=await f.call('bundle_get',{projectId:f.projectId,profileId:null});
+  const omitted=structuredClone(f.bundle) as any;omitted.revision=2;omitted.baseRevision=2;delete omitted.units[0].appliedConfiguration;
+  await assert.rejects(()=>f.call('bundle_publish',{operationId:uuid(),expectedRevision:1,bundle:omitted}),(e:any)=>e.code==='VALIDATION');
+  const dangling=structuredClone(f.personal);dangling.revision=2;dangling.choices[0].unitId=uuid();
+  await assert.rejects(()=>f.call('bundle_publish',{operationId:uuid(),expectedRevision:1,bundle:dangling,reasons:f.reasons}),(e:any)=>e.code==='BUNDLE_CHOICE_UNIT');
+  const personalUnits={...f.personal,revision:2,units:f.bundle.units};
+  await assert.rejects(()=>f.call('bundle_publish',{operationId:uuid(),expectedRevision:1,bundle:personalUnits,reasons:f.reasons}),(e:any)=>e.code==='BUNDLE_PERSONAL');
+  const draftId=(await f.call('authoring_create',{operationId:uuid(),projectId:f.projectId,profileId:null,expectedRevision:1,baseRevision:2,nextStep:'Preparar revisão'})).result.draftId;
+  await f.call('authoring_save',{operationId:uuid(),draftId,expectedRevision:1,nextStep:'Publicar após conferência',items:[{kind:'unit',position:0,body:f.bundle.units[0]},{kind:'coverage',position:0,body:f.bundle.coverage[0]}],inspection:f.bundle.inspection});
+  const account={operationId:uuid(),scope:'account',expectedRevision:0,configuration:{editorial:{language:'pt',order:'obra'},instructional:{examples:'concretos'}},requirements:['Distinguir fonte e interpretação'],intention:'Use exemplos menos abstratos e mantenha a ordem da obra.'};
+  const receipt=await f.call('parameter_save',account);assert.deepEqual(await f.call('parameter_save',account),receipt);
+  const invalidated=(await f.call('authoring_get',{draftId})).draft;assert.equal(invalidated.inspection.completed,false);assert.equal(invalidated.revision,3);
+  await assert.rejects(()=>f.call('authoring_publish',{operationId:uuid(),draftId,expectedRevision:3}),(e:any)=>e.code==='BUNDLE_INSPECTION');
+  await assert.rejects(()=>f.call('parameter_save',{...account,operationId:uuid()}),(e:any)=>e.code==='CONFLICT');
+  const project=(await f.call('project_get',{projectId:f.projectId})).project;
+  await assert.rejects(()=>f.call('project_update',{operationId:uuid(),projectId:f.projectId,expectedRevision:project.revision,metadata:{configuration:{editorial:{language:'en'},instructional:{}}}}),(e:any)=>e.code==='VALIDATION');
+  await f.call('parameter_save',{operationId:uuid(),scope:'project',projectId:f.projectId,expectedRevision:project.revision,configuration:{editorial:{order:'argumento'},instructional:{}},requirements:['Citar a passagem'],intention:'Neste estudo organize pelos argumentos.'});
+  await assert.rejects(()=>f.call('parameter_save',{operationId:uuid(),scope:'unit',projectId:f.projectId,unitId:uuid(),expectedRevision:0,configuration:{editorial:{},instructional:{}},requirements:[],intention:'Identidade inexistente'}),(e:any)=>e.code==='NOT_FOUND');
+  await f.call('parameter_save',{operationId:uuid(),scope:'unit',projectId:f.projectId,unitId:f.unitId,expectedRevision:0,configuration:{editorial:{},instructional:{examples:'comparações cotidianas'}},requirements:['Explicitar limites da analogia'],intention:'Use comparações cotidianas nesta unidade.'});
+  const policy=await f.call('parameter_get',{scope:'unit',projectId:f.projectId,unitId:f.unitId});
+  assert.deepEqual(policy.effective,{editorial:{language:'pt',order:'argumento'},instructional:{examples:'comparações cotidianas'}});
+  assert.deepEqual(policy.requirements,['Distinguir fonte e interpretação','Citar a passagem','Explicitar limites da analogia']);
+  assert.equal(policy.layers[0].intention,account.intention);assert.equal(policy.layers[2].revision,1);assert.equal(policy.overrides.length,2);
+  assert.deepEqual((await f.call('bundle_get',{projectId:f.projectId,profileId:null})),initial,'Alterar parâmetros não regenera publicação.');
+  const next=structuredClone(f.bundle) as any;next.revision=2;next.baseRevision=2;
+  await assert.rejects(()=>f.call('bundle_publish',{operationId:uuid(),expectedRevision:1,bundle:next}),(e:any)=>e.code==='PARAMETERS_CHANGED');
+  next.units[0].appliedConfiguration={...policy.effective,editorial:{...policy.effective.editorial,register:'claro'}};
+  await f.call('bundle_publish',{operationId:uuid(),expectedRevision:1,bundle:next});
+  const manifest=await f.call('bundle_get',{projectId:f.projectId,profileId:null});
+  assert.deepEqual(manifest.parameters.units[f.unitId],{effective:policy.effective,requirements:policy.requirements});
+  assert.equal(JSON.stringify(manifest).includes(account.intention),false,'Intenção privada da conta não vaza no manifesto comum.');
+  assert.deepEqual((await f.call('content_get',{projectId:f.projectId,profileId:null,revision:2,contentId:f.unitId})).appliedConfiguration,next.units[0].appliedConfiguration);
+  assert.deepEqual((await f.call('bundle_get',{projectId:f.projectId,profileId:null,revision:1})),initial);
+  await assert.rejects(()=>execute('parameter_get',{scope:'project',projectId:f.projectId},outsider),(e:any)=>e.code==='NOT_FOUND');
+  assert.equal((await transaction(outsider,db=>db.query('select * from um.account_parameters where account_id=$1',[owner.id]))).rowCount,0);
+  assert.equal((await transaction(outsider,db=>db.query('select * from um.unit_parameters where project_id=$1',[f.projectId]))).rowCount,0);
+  await assert.rejects(()=>execute('parameter_save',{...account,operationId:uuid(),expectedRevision:1},{...owner,permission:'read'}),(e:any)=>e.code==='FORBIDDEN');
+  await assert.rejects(()=>f.call('parameter_get',{scope:'account',projectId:f.projectId}),(e:any)=>e.code==='VALIDATION');
+ }finally{await ctx.close();}
+});

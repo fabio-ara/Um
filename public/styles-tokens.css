@@ -1,0 +1,241 @@
+:root {
+  color-scheme: light;
+
+  /* Opções cromáticas: não são consumidas por componentes. */
+  --color-white: #ffffff;
+  --color-gray-25: #f7f8fa;
+  --color-gray-50: #f0f2f5;
+  --color-gray-75: #eef0f3;
+  --color-gray-100: #e8ebef;
+  --color-gray-150: #e1e5e9;
+  --color-gray-200: #b8c0ca;
+  --color-gray-250: #9ba5b1;
+  --color-gray-300: #c8d0d9;
+  --color-gray-400: #aeb7c2;
+  --color-gray-450: #87919c;
+  --color-gray-475: #68737f;
+  --color-gray-525: #4d5661;
+  --color-gray-500: #8c959f;
+  --color-gray-600: #6e7781;
+  --color-gray-650: #59636e;
+  --color-gray-700: #444c56;
+  --color-gray-750: #30363d;
+  --color-gray-800: #242a31;
+  --color-gray-850: #1b1f24;
+  --color-gray-875: #161b22;
+  --color-gray-900: #111418;
+  --color-gray-950: #0b0d10;
+  --color-ink: #1f2328;
+  --color-ink-on-dark: #f0f3f6;
+  --color-blue-50: #e8f0fe;
+  --color-blue-300: #8ab4f8;
+  --color-blue-250: #a8c7fa;
+  --color-blue-200: #aecbfa;
+  --color-blue-500: #0b57d0;
+  --color-blue-600: #0842a0;
+  --color-blue-700: #0969da;
+  --color-blue-800: #263b5e;
+  --color-blue-850: #243b5e;
+  --color-blue-ink: #08111f;
+  --color-green-50: #dafbe1;
+  --color-green-500: #1a7f37;
+  --color-green-300: #56d364;
+  --color-green-800: #173524;
+  --color-amber-50: #fff1c2;
+  --color-amber-500: #7d4e00;
+  --color-amber-400: #c69026;
+  --color-amber-600: #9e6a03;
+  --color-amber-300: #e3b341;
+  --color-amber-800: #493500;
+  --color-red-50: #ffebe9;
+  --color-red-500: #b42318;
+  --color-red-300: #ff7b72;
+  --color-red-800: #4c1f24;
+  --color-sky-300: #79c0ff;
+  --color-cyan-500: #006b5f;
+  --color-cyan-300: #63d6c7;
+  --color-orange-600: #a44900;
+  --color-orange-300: #ffb77c;
+  --color-purple-600: #6f42c1;
+  --color-purple-300: #c5a3ff;
+  --color-pink-600: #a40e4c;
+  --color-pink-300: #ff8fbd;
+  --alpha-overlay-light: rgb(31 35 40 / 42%);
+  --alpha-overlay-dark: rgb(0 0 0 / 64%);
+  --shadow-option-light-card: 0 1px 2px rgb(31 35 40 / 8%), 0 1px 4px rgb(31 35 40 / 5%);
+  --shadow-option-light-floating: 0 12px 32px rgb(31 35 40 / 16%);
+  --shadow-option-dark-card: 0 1px 2px rgb(0 0 0 / 32%);
+  --shadow-option-dark-floating: 0 16px 40px rgb(0 0 0 / 48%);
+
+  /* Opções tipográficas e geométricas. */
+  --font-ui: "Aptos", "Segoe UI Variable Text", "SF Pro Text", "Inter", "Noto Sans", "Roboto", sans-serif;
+  --font-display: "Aptos Display", "Segoe UI Variable Display", "SF Pro Display", "Inter", "Noto Sans", "Roboto", sans-serif;
+  --font-mono: "Cascadia Code", "Consolas", "SFMono-Regular", "Cascadia Mono", "Liberation Mono", monospace;
+  --type-xs: 0.8125rem;
+  --type-sm: 0.875rem;
+  --type-dense: 0.9375rem;
+  --type-prose: 0.96875rem;
+  --type-diagram: 16px;
+  --type-diagram-secondary: 14.5px;
+  --type-diagram-detail: 13.5px;
+  --type-base: 1rem;
+  --type-md: 1rem;
+  --type-lg: 1.16rem;
+  --weight-title: 600;
+  --weight-label: 500;
+  --weight-body: 400;
+  --space-copy: 8px;
+  --space-section: 16px;
+  --leading-snug: 1.32;
+  --leading-dense: 1.44;
+  --leading-prose: 1.5;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.62;
+  --tracking-normal: 0.01em;
+  --tracking-heading: 0.06em;
+  --tap: 44px;
+  --radius: 14px;
+  --radius-control: 10px;
+  --shell-scrollbar-comp: 12px;
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-bottom-tappable: env(safe-area-inset-bottom, 0px);
+
+  /* Decisões semânticas do modo claro. */
+  --surface-canvas: var(--color-gray-25);
+  --surface-raised: var(--color-white);
+  --surface-subtle: var(--color-gray-50);
+  --surface-sunken: var(--color-gray-100);
+  --surface-overlay: var(--alpha-overlay-light);
+  --surface-selection: var(--color-blue-50);
+  --text-primary: var(--color-ink);
+  --text-secondary: var(--color-gray-650);
+  --text-tertiary: var(--color-gray-600);
+  --text-on-action: var(--color-white);
+  --border-subtle: var(--color-gray-150);
+  --border-default: var(--color-gray-300);
+  --border-strong: var(--color-gray-500);
+  --action-primary: var(--color-blue-500);
+  --action-primary-hover: var(--color-blue-600);
+  --action-primary-subtle: var(--color-blue-50);
+  --action-secondary-hover: var(--color-gray-100);
+  --focus-ring: var(--color-blue-500);
+  --input-surface: var(--color-white);
+  --input-border: var(--color-gray-500);
+  --input-border-subtle: var(--color-gray-300);
+  --status-success: var(--color-green-500);
+  --status-success-subtle: var(--color-green-50);
+  --status-warning: var(--color-amber-500);
+  --status-warning-subtle: var(--color-amber-50);
+  --status-warning-border: var(--color-amber-400);
+  --status-danger: var(--color-red-500);
+  --status-danger-subtle: var(--color-red-50);
+  --status-info: var(--color-blue-700);
+  --origin-catalog: var(--color-green-500);
+  --origin-private: var(--color-red-500);
+  --origin-plan: var(--color-blue-500);
+  --shadow-card: var(--shadow-option-light-card);
+  --shadow-floating: var(--shadow-option-light-floating);
+  --scrollbar-track: var(--color-gray-75);
+  --scrollbar-thumb: var(--color-gray-400);
+  --scrollbar-thumb-hover: var(--color-gray-450);
+  --theme-color: var(--color-gray-25);
+
+  /* Decisões próprias do leitor e do catálogo de componentes. */
+  --study-card-surface: var(--surface-raised);
+  --study-card-border: var(--border-default);
+  --study-card-title: var(--text-primary);
+  --resource-surface: var(--surface-raised);
+  --resource-surface-subtle: var(--surface-subtle);
+  --resource-surface-sunken: var(--surface-sunken);
+  --resource-text: var(--color-gray-700);
+  --resource-text-secondary: var(--text-secondary);
+  --resource-border: var(--border-default);
+  --resource-border-strong: var(--border-strong);
+  --resource-grid: var(--border-subtle);
+  --resource-axis: var(--text-secondary);
+  --resource-structure: var(--action-primary);
+  --resource-accent: var(--action-primary);
+  --resource-accent-subtle: var(--action-primary-subtle);
+  --resource-gap-surface: var(--input-surface);
+  --resource-gap-border: var(--input-border);
+  --resource-gap-focus: var(--focus-ring);
+  --resource-correct: var(--status-success);
+  --resource-correct-subtle: var(--status-success-subtle);
+  --resource-error: var(--status-danger);
+  --resource-error-subtle: var(--status-danger-subtle);
+  --resource-warning: var(--status-warning);
+  --resource-warning-subtle: var(--status-warning-subtle);
+  --data-series-1: var(--color-blue-500);
+  --data-series-2: var(--color-orange-600);
+  --data-series-3: var(--color-cyan-500);
+  --data-series-4: var(--color-purple-600);
+  --data-series-5: var(--color-green-500);
+  --data-series-6: var(--color-pink-600);
+}
+
+:root[data-color-mode="dark"] {
+  color-scheme: dark;
+  --surface-canvas: var(--color-gray-900);
+  --surface-raised: var(--color-gray-850);
+  --surface-subtle: var(--color-gray-800);
+  --surface-sunken: var(--color-gray-950);
+  --surface-overlay: var(--alpha-overlay-dark);
+  --surface-selection: var(--color-blue-800);
+  --text-primary: var(--color-ink-on-dark);
+  --text-secondary: var(--color-gray-200);
+  --resource-text: var(--color-gray-300);
+  --text-tertiary: var(--color-gray-250);
+  --text-on-action: var(--color-blue-ink);
+  --border-subtle: var(--color-gray-750);
+  --border-default: var(--color-gray-700);
+  --border-strong: var(--color-gray-600);
+  --action-primary: var(--color-blue-300);
+  --action-primary-hover: var(--color-blue-200);
+  --action-primary-subtle: var(--color-blue-850);
+  --action-secondary-hover: var(--color-gray-750);
+  --focus-ring: var(--color-blue-250);
+  --input-surface: var(--color-gray-875);
+  --input-border: var(--color-gray-600);
+  --input-border-subtle: var(--color-gray-700);
+  --status-success: var(--color-green-300);
+  --status-success-subtle: var(--color-green-800);
+  --status-warning: var(--color-amber-300);
+  --status-warning-subtle: var(--color-amber-800);
+  --status-warning-border: var(--color-amber-600);
+  --status-danger: var(--color-red-300);
+  --status-danger-subtle: var(--color-red-800);
+  --status-info: var(--color-sky-300);
+  --origin-catalog: var(--color-green-300);
+  --origin-private: var(--color-red-300);
+  --origin-plan: var(--color-blue-300);
+  --shadow-card: var(--shadow-option-dark-card);
+  --shadow-floating: var(--shadow-option-dark-floating);
+  --scrollbar-track: var(--color-gray-900);
+  --scrollbar-thumb: var(--color-gray-525);
+  --scrollbar-thumb-hover: var(--color-gray-475);
+  --theme-color: var(--color-gray-900);
+  --data-series-1: var(--color-blue-300);
+  --data-series-2: var(--color-orange-300);
+  --data-series-3: var(--color-cyan-300);
+  --data-series-4: var(--color-purple-300);
+  --data-series-5: var(--color-green-300);
+  --data-series-6: var(--color-pink-300);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+    scroll-behavior: auto;
+  }
+}

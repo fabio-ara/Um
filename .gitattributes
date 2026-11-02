@@ -1,0 +1,5 @@
+* text=auto eol=lf
+*.png binary
+*.jar binary
+# Licensed source receipts retain their acquired bytes and hashes.
+fixtures/sources/* -text -whitespace

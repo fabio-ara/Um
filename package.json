@@ -1,0 +1,40 @@
+{
+  "name": "um",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": {"node": ">=24.14.0"},
+  "scripts": {
+    "dev": "tsx --env-file-if-exists=.env src/server.ts",
+    "web": "vite --host 127.0.0.1 --port 4419",
+    "check": "tsc --noEmit",
+    "build": "vite build",
+    "test": "tsx --env-file-if-exists=.env --test tests/*.test.ts",
+    "local:setup": "tsx scripts/local-setup.ts",
+    "db:migrate": "tsx --env-file-if-exists=.env scripts/migrate.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/node": "2.1.2",
+    "@modelcontextprotocol/server": "2.4.0",
+    "@supabase/supabase-js": "2.118.0",
+    "express": "5.1.0",
+    "fflate": "0.8.3",
+    "ipaddr.js": "2.2.0",
+    "jose": "6.1.0",
+    "linkedom": "0.18.12",
+    "pdfjs-dist": "6.4.299",
+    "pg": "8.16.3",
+    "undici": "7.30.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/express": "5.0.3",
+    "@types/node": "24.10.0",
+    "@types/pg": "8.15.5",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3",
+    "vite": "8.3.5"
+  }
+}

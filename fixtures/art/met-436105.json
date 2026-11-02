@@ -1,0 +1,113 @@
+{
+  "objectID": 436105,
+  "isHighlight": true,
+  "accessionNumber": "31.45",
+  "accessionYear": "1931",
+  "isPublicDomain": true,
+  "primaryImage": "https://images.metmuseum.org/CRDImages/ep/original/DP-13139-001.jpg",
+  "primaryImageSmall": "https://images.metmuseum.org/CRDImages/ep/web-large/DP-13139-001.jpg",
+  "additionalImages": [
+    "https://images.metmuseum.org/CRDImages/ep/original/LC-31_45_suppl_003.jpg",
+    "https://images.metmuseum.org/CRDImages/ep/original/LC-31_45-2.jpg",
+    "https://images.metmuseum.org/CRDImages/ep/original/LC-31_45-3.jpg"
+  ],
+  "constituents": [
+    {
+      "constituentID": 161811,
+      "role": "Artist",
+      "name": "Jacques Louis David",
+      "constituentULAN_URL": "http://vocab.getty.edu/page/ulan/500115221",
+      "constituentWikidata_URL": "https://www.wikidata.org/wiki/Q83155",
+      "gender": ""
+    }
+  ],
+  "department": "European Paintings",
+  "objectName": "Painting",
+  "title": "The Death of Socrates",
+  "culture": "",
+  "period": "",
+  "dynasty": "",
+  "reign": "",
+  "portfolio": "",
+  "artistRole": "Artist",
+  "artistPrefix": "",
+  "artistDisplayName": "Jacques Louis David",
+  "artistDisplayBio": "French, Paris 1748–1825 Brussels",
+  "artistSuffix": "",
+  "artistAlphaSort": "David, Jacques Louis",
+  "artistNationality": "French",
+  "artistBeginDate": "1748",
+  "artistEndDate": "1825",
+  "artistGender": "",
+  "artistWikidata_URL": "https://www.wikidata.org/wiki/Q83155",
+  "artistULAN_URL": "http://vocab.getty.edu/page/ulan/500115221",
+  "objectDate": "1787",
+  "objectBeginDate": 1787,
+  "objectEndDate": 1787,
+  "medium": "Oil on canvas",
+  "dimensions": "51 x 77 1/4 in. (129.5 x 196.2 cm)",
+  "measurements": [
+    {
+      "elementName": "Overall",
+      "elementDescription": null,
+      "elementMeasurements": {
+        "Height": 129.5,
+        "Width": 196.2
+      }
+    },
+    {
+      "elementName": "Framed",
+      "elementDescription": null,
+      "elementMeasurements": {
+        "Depth": 14.605029,
+        "Height": 168.27533,
+        "Width": 233.68047
+      }
+    },
+    {
+      "elementName": "Framed",
+      "elementDescription": null,
+      "elementMeasurements": {
+        "Weight": 66.678764
+      }
+    }
+  ],
+  "creditLine": "Catharine Lorillard Wolfe Collection, Wolfe Fund, 1931",
+  "geographyType": "",
+  "city": "",
+  "state": "",
+  "county": "",
+  "country": "",
+  "region": "",
+  "subregion": "",
+  "locale": "",
+  "locus": "",
+  "excavation": "",
+  "river": "",
+  "classification": "Paintings",
+  "rightsAndReproduction": "",
+  "linkResource": "",
+  "metadataDate": "2026-08-14T04:48:11.14Z",
+  "repository": "Metropolitan Museum of Art, New York, NY",
+  "objectURL": "https://www.metmuseum.org/art/collection/search/436105",
+  "tags": [
+    {
+      "term": "Socrates",
+      "AAT_URL": "http://vocab.getty.edu/page/ulan/500260248",
+      "Wikidata_URL": "https://www.wikidata.org/wiki/Q913"
+    },
+    {
+      "term": "Men",
+      "AAT_URL": "http://vocab.getty.edu/page/aat/300025928",
+      "Wikidata_URL": "https://www.wikidata.org/wiki/Q8441"
+    },
+    {
+      "term": "Lyres",
+      "AAT_URL": "http://vocab.getty.edu/page/aat/300042114",
+      "Wikidata_URL": "https://www.wikidata.org/wiki/Q201129"
+    }
+  ],
+  "objectWikidata_URL": "https://www.wikidata.org/wiki/Q1752990",
+  "isTimelineWork": true,
+  "GalleryNumber": "634"
+}

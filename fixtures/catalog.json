@@ -1,0 +1,590 @@
+{
+  "kind": "documented-demonstration-catalog",
+  "entities": [
+    {
+      "id": "67ee9376-7b1d-4f86-8d53-d2b1ae0e7641",
+      "kind": "discipline",
+      "labels": {
+        "pt": "Filosofia"
+      },
+      "aliases": [],
+      "authorIds": [],
+      "regions": [],
+      "traditions": [],
+      "disciplines": [],
+      "periods": [],
+      "dates": {
+        "start": null,
+        "end": null,
+        "approximate": true
+      },
+      "locations": [],
+      "metadata": {}
+    },
+    {
+      "id": "29de6d46-50f7-49b2-80ff-85ba019213f9",
+      "kind": "discipline",
+      "labels": {
+        "pt": "Artes visuais"
+      },
+      "aliases": [],
+      "authorIds": [],
+      "regions": [],
+      "traditions": [],
+      "disciplines": [],
+      "periods": [],
+      "dates": {
+        "start": null,
+        "end": null,
+        "approximate": true
+      },
+      "locations": [],
+      "metadata": {}
+    },
+    {
+      "id": "6dd887b1-2b5a-4949-890d-5e09fe1d2f44",
+      "kind": "period",
+      "labels": {
+        "pt": "Grécia clássica"
+      },
+      "aliases": [],
+      "authorIds": [],
+      "regions": [],
+      "traditions": [],
+      "disciplines": [],
+      "periods": [],
+      "dates": {
+        "start": null,
+        "end": null,
+        "approximate": true
+      },
+      "locations": [],
+      "metadata": {}
+    },
+    {
+      "id": "0e6bf165-41e2-412f-8853-9d302dc965d4",
+      "kind": "period",
+      "labels": {
+        "pt": "China antiga"
+      },
+      "aliases": [],
+      "authorIds": [],
+      "regions": [],
+      "traditions": [],
+      "disciplines": [],
+      "periods": [],
+      "dates": {
+        "start": null,
+        "end": null,
+        "approximate": true
+      },
+      "locations": [],
+      "metadata": {}
+    },
+    {
+      "id": "62ecc51a-828b-4ce9-8a48-bd2aaa7c8fb7",
+      "kind": "period",
+      "labels": {
+        "pt": "Europa moderna"
+      },
+      "aliases": [],
+      "authorIds": [],
+      "regions": [],
+      "traditions": [],
+      "disciplines": [],
+      "periods": [],
+      "dates": {
+        "start": null,
+        "end": null,
+        "approximate": true
+      },
+      "locations": [],
+      "metadata": {}
+    },
+    {
+      "id": "4298a45a-8e03-42df-85bc-44fb8c8e172e",
+      "kind": "tradition",
+      "labels": {
+        "pt": "Filosofia grega"
+      },
+      "aliases": [],
+      "authorIds": [],
+      "regions": [],
+      "traditions": [],
+      "disciplines": [],
+      "periods": [],
+      "dates": {
+        "start": null,
+        "end": null,
+        "approximate": true
+      },
+      "locations": [],
+      "metadata": {}
+    },
+    {
+      "id": "c31e468c-d8d2-468d-8ee7-83fe0ee7c69c",
+      "kind": "tradition",
+      "labels": {
+        "pt": "Tradição Ru"
+      },
+      "aliases": [],
+      "authorIds": [],
+      "regions": [],
+      "traditions": [],
+      "disciplines": [],
+      "periods": [],
+      "dates": {
+        "start": null,
+        "end": null,
+        "approximate": true
+      },
+      "locations": [],
+      "metadata": {}
+    },
+    {
+      "id": "f9264372-0780-48f4-8b9b-e3ef435fb8e8",
+      "kind": "tradition",
+      "labels": {
+        "pt": "Madhyamaka"
+      },
+      "aliases": [],
+      "authorIds": [],
+      "regions": [],
+      "traditions": [],
+      "disciplines": [],
+      "periods": [],
+      "dates": {
+        "start": null,
+        "end": null,
+        "approximate": true
+      },
+      "locations": [],
+      "metadata": {}
+    },
+    {
+      "id": "4ab32578-9bea-4d4e-87e0-15fcedd82d86",
+      "kind": "place",
+      "labels": {
+        "pt": "Atenas / Athenae"
+      },
+      "aliases": [],
+      "authorIds": [],
+      "regions": [],
+      "traditions": [],
+      "disciplines": [],
+      "periods": [],
+      "dates": {
+        "start": null,
+        "end": null,
+        "approximate": true
+      },
+      "locations": [
+        {
+          "lat": 37.97164747289856,
+          "lon": 23.723954796773654,
+          "role": "activity",
+          "evidence": "Local antigo: Pleiades 579885, ponto representativo; não indica endereço individual. https://pleiades.stoa.org/places/579885"
+        }
+      ],
+      "metadata": {
+        "source": "https://pleiades.stoa.org/places/579885",
+        "credit": "Pleiades contributors",
+        "rights": "Copyright © The Contributors. Sharing and remixing permitted under terms of the Creative Commons Attribution 3.0 License (cc-by)."
+      }
+    },
+    {
+      "id": "5d05b2f6-9dce-48ce-81c5-a1ae0e17da42",
+      "kind": "place",
+      "labels": {
+        "pt": "Conjunto memorial de Confúcio em Qufu"
+      },
+      "aliases": [],
+      "authorIds": [],
+      "regions": [],
+      "traditions": [],
+      "disciplines": [],
+      "periods": [],
+      "dates": {
+        "start": null,
+        "end": null,
+        "approximate": true
+      },
+      "locations": [
+        {
+          "lat": 35.613215000000004,
+          "lon": 116.99456111111111,
+          "role": "conservation",
+          "dates": "Templo comemorativo iniciado em 478 a.C.; reconstruções posteriores.",
+          "evidence": "UNESCO 704: N35 36 47.574 E116 59 40.42. Local de conservação/memória; não é ponto atribuído a nascimento ou composição. https://whc.unesco.org/en/list/704/"
+        }
+      ],
+      "metadata": {
+        "source": "https://whc.unesco.org/en/list/704/",
+        "limits": "O marcador representa o conjunto patrimonial atual, não a extensão antiga de Lu."
+      }
+    },
+    {
+      "id": "3b0d2653-e0ff-454a-8a2a-1ed1f3b5a044",
+      "kind": "author",
+      "labels": {
+        "pt": "Platão",
+        "grc": "Πλάτων",
+        "en": "Plato"
+      },
+      "aliases": [
+        "Plato"
+      ],
+      "authorIds": [],
+      "regions": [
+        "4ab32578-9bea-4d4e-87e0-15fcedd82d86"
+      ],
+      "traditions": [
+        "4298a45a-8e03-42df-85bc-44fb8c8e172e"
+      ],
+      "disciplines": [
+        "67ee9376-7b1d-4f86-8d53-d2b1ae0e7641"
+      ],
+      "periods": [
+        "6dd887b1-2b5a-4949-890d-5e09fe1d2f44"
+      ],
+      "dates": {
+        "start": null,
+        "end": null,
+        "approximate": true
+      },
+      "locations": [],
+      "metadata": {
+        "source": "https://plato.stanford.edu/entries/plato/"
+      }
+    },
+    {
+      "id": "f2ff4c8a-ad21-4db9-8a56-bcc04351a960",
+      "kind": "author",
+      "labels": {
+        "pt": "Confúcio / Kongzi",
+        "zh": "孔子"
+      },
+      "aliases": [
+        "Confucius",
+        "Kongzi"
+      ],
+      "authorIds": [],
+      "regions": [],
+      "traditions": [
+        "c31e468c-d8d2-468d-8ee7-83fe0ee7c69c"
+      ],
+      "disciplines": [
+        "67ee9376-7b1d-4f86-8d53-d2b1ae0e7641"
+      ],
+      "periods": [
+        "0e6bf165-41e2-412f-8853-9d302dc965d4"
+      ],
+      "dates": {
+        "start": -551,
+        "end": -479,
+        "approximate": true,
+        "original": "551–479 a.C. (datas tradicionais)",
+        "evidence": "https://plato.stanford.edu/entries/confucius/"
+      },
+      "locations": [],
+      "metadata": {
+        "source": "https://plato.stanford.edu/entries/confucius/",
+        "limits": "As representações nos Analectos têm história textual; não tratadas como transcrição."
+      }
+    },
+    {
+      "id": "d39f4afd-c043-4bde-8451-9289859e6542",
+      "kind": "author",
+      "labels": {
+        "pt": "Nāgārjuna"
+      },
+      "aliases": [
+        "Nagarjuna"
+      ],
+      "authorIds": [],
+      "regions": [],
+      "traditions": [
+        "f9264372-0780-48f4-8b9b-e3ef435fb8e8"
+      ],
+      "disciplines": [
+        "67ee9376-7b1d-4f86-8d53-d2b1ae0e7641"
+      ],
+      "periods": [],
+      "dates": {
+        "start": 150,
+        "end": 250,
+        "approximate": true,
+        "original": "c. 150–250 d.C.",
+        "evidence": "https://plato.stanford.edu/entries/nagarjuna/"
+      },
+      "locations": [],
+      "metadata": {
+        "source": "https://plato.stanford.edu/entries/nagarjuna/",
+        "locationUncertainty": "Biografia pouco determinada; hipótese ampla de sul da Índia não permite inventar um ponto no mapa."
+      }
+    },
+    {
+      "id": "f5fd1e74-5c2d-4fe2-83b2-25aeff692909",
+      "kind": "work",
+      "labels": {
+        "pt": "Apologia de Sócrates"
+      },
+      "aliases": [],
+      "authorIds": [
+        "3b0d2653-e0ff-454a-8a2a-1ed1f3b5a044"
+      ],
+      "regions": [
+        "4ab32578-9bea-4d4e-87e0-15fcedd82d86"
+      ],
+      "traditions": [
+        "4298a45a-8e03-42df-85bc-44fb8c8e172e"
+      ],
+      "disciplines": [
+        "67ee9376-7b1d-4f86-8d53-d2b1ae0e7641"
+      ],
+      "periods": [
+        "6dd887b1-2b5a-4949-890d-5e09fe1d2f44"
+      ],
+      "dates": {
+        "start": null,
+        "end": null,
+        "approximate": true
+      },
+      "locations": [],
+      "metadata": {
+        "source": "https://github.com/PerseusDL/canonical-greekLit/tree/a6eb0cc3e6f6e382934a2c8b33577d2fb4371e00/data/tlg0059/tlg002",
+        "extent": "full"
+      },
+      "authorship": "individual"
+    },
+    {
+      "id": "c42075b4-92d6-4231-879f-3834fccc5e24",
+      "kind": "work",
+      "labels": {
+        "pt": "Analectos",
+        "zh": "論語",
+        "en": "Analects"
+      },
+      "aliases": [],
+      "authorIds": [
+        "f2ff4c8a-ad21-4db9-8a56-bcc04351a960"
+      ],
+      "regions": [],
+      "traditions": [
+        "c31e468c-d8d2-468d-8ee7-83fe0ee7c69c"
+      ],
+      "disciplines": [
+        "67ee9376-7b1d-4f86-8d53-d2b1ae0e7641"
+      ],
+      "periods": [
+        "0e6bf165-41e2-412f-8853-9d302dc965d4"
+      ],
+      "dates": {
+        "start": null,
+        "end": null,
+        "approximate": true
+      },
+      "locations": [],
+      "metadata": {
+        "source": "https://www.gutenberg.org/ebooks/3330",
+        "limits": "Ditos atribuídos a Confúcio em compilação; não autoria individual simples. Edição disponível: tradução de James Legge."
+      },
+      "authorship": "attributed"
+    },
+    {
+      "id": "7c65951b-0857-412a-8a20-9a48bce2e550",
+      "kind": "author",
+      "labels": {
+        "pt": "Jacques Louis David"
+      },
+      "aliases": [],
+      "authorIds": [],
+      "regions": [],
+      "traditions": [],
+      "disciplines": [
+        "29de6d46-50f7-49b2-80ff-85ba019213f9"
+      ],
+      "periods": [
+        "62ecc51a-828b-4ce9-8a48-bd2aaa7c8fb7"
+      ],
+      "dates": {
+        "start": 1748,
+        "end": 1825,
+        "approximate": false,
+        "evidence": "https://www.metmuseum.org/art/collection/search/436105"
+      },
+      "locations": [],
+      "metadata": {}
+    },
+    {
+      "id": "2a4985bf-ab03-455f-8e99-a860e5cc72cc",
+      "kind": "art",
+      "labels": {
+        "pt": "A morte de Sócrates",
+        "en": "The Death of Socrates"
+      },
+      "aliases": [],
+      "authorIds": [
+        "7c65951b-0857-412a-8a20-9a48bce2e550"
+      ],
+      "regions": [],
+      "traditions": [],
+      "disciplines": [
+        "29de6d46-50f7-49b2-80ff-85ba019213f9",
+        "67ee9376-7b1d-4f86-8d53-d2b1ae0e7641"
+      ],
+      "periods": [
+        "62ecc51a-828b-4ce9-8a48-bd2aaa7c8fb7"
+      ],
+      "dates": {
+        "start": 1787,
+        "end": 1787,
+        "approximate": false,
+        "evidence": "https://www.metmuseum.org/art/collection/search/436105"
+      },
+      "locations": [],
+      "metadata": {
+        "credit": "Jacques Louis David; The Metropolitan Museum of Art, Catharine Lorillard Wolfe Collection, Wolfe Fund, 1931. Número 31.45.",
+        "source": "https://www.metmuseum.org/art/collection/search/436105",
+        "rights": "Domínio público; reprodução disponibilizada pelo Met.",
+        "didacticRole": "Comparar a recepção visual de Sócrates em 1787 com a apresentação literária antiga. O quadro representa a morte, associada ao Fédon, e não documenta visualmente o julgamento da Apologia. A presença de Platão é escolha artística segundo o museu.",
+        "localImage": "art/socrates-david-small.jpg",
+        "fullImage": "art/socrates-david.jpg",
+        "offlineAllowed": true,
+        "alt": "Sócrates, sentado sobre o leito, ergue uma mão e estende a outra em direção à taça. Pessoas ao redor manifestam pesar; uma figura idosa está sentada junto à extremidade do leito."
+      },
+      "authorship": "individual"
+    },
+    {
+      "id": "6354a60a-cd25-4489-8e72-29fd17c072ff",
+      "kind": "author",
+      "labels": {
+        "pt": "Karl Marx"
+      },
+      "aliases": [],
+      "authorIds": [],
+      "regions": [],
+      "traditions": [],
+      "disciplines": [],
+      "periods": [],
+      "dates": {
+        "start": 1818,
+        "end": 1883,
+        "approximate": false,
+        "evidence": "https://www.gutenberg.org/ebooks/61"
+      },
+      "locations": [],
+      "metadata": {}
+    },
+    {
+      "id": "c312dc5c-1ae3-4fd6-879b-636d7c13cb45",
+      "kind": "author",
+      "labels": {
+        "pt": "Friedrich Engels"
+      },
+      "aliases": [],
+      "authorIds": [],
+      "regions": [],
+      "traditions": [],
+      "disciplines": [],
+      "periods": [],
+      "dates": {
+        "start": 1820,
+        "end": 1895,
+        "approximate": false,
+        "evidence": "https://www.gutenberg.org/ebooks/61"
+      },
+      "locations": [],
+      "metadata": {}
+    },
+    {
+      "id": "be3a06f5-6024-4eba-88bb-563e1bbb5680",
+      "kind": "work",
+      "labels": {
+        "pt": "Manifesto do Partido Comunista"
+      },
+      "aliases": [],
+      "authorIds": [
+        "6354a60a-cd25-4489-8e72-29fd17c072ff",
+        "c312dc5c-1ae3-4fd6-879b-636d7c13cb45"
+      ],
+      "regions": [],
+      "traditions": [],
+      "disciplines": [],
+      "periods": [],
+      "dates": {
+        "start": null,
+        "end": null,
+        "approximate": true
+      },
+      "locations": [],
+      "metadata": {
+        "source": "https://www.gutenberg.org/ebooks/61",
+        "extent": "reference",
+        "limits": "Registro bibliográfico de coautoria; texto não incorporado a este estudo."
+      },
+      "authorship": "multiple"
+    },
+    {
+      "id": "8fe53ff7-147e-4843-84cf-4f27bd24b672",
+      "kind": "work",
+      "labels": {
+        "pt": "Documento sintético de autoria desconhecida"
+      },
+      "aliases": [],
+      "authorIds": [],
+      "regions": [],
+      "traditions": [],
+      "disciplines": [],
+      "periods": [],
+      "dates": {
+        "start": null,
+        "end": null,
+        "approximate": true
+      },
+      "locations": [],
+      "metadata": {
+        "synthetic": true,
+        "extent": "reference",
+        "limits": "Fixture explicitamente sintética para testar autoria desconhecida, sem alegação de documento histórico."
+      },
+      "authorship": "unknown"
+    }
+  ],
+  "relations": [
+    {
+      "id": "2d76d7a6-c65b-4f54-8fd3-356fa96570a6",
+      "from": "f5fd1e74-5c2d-4fe2-83b2-25aeff692909",
+      "to": "c42075b4-92d6-4231-879f-3834fccc5e24",
+      "type": "affinity",
+      "evidence": [
+        "Comparação didática proposta pelo Um entre Apologia 21d e Analectos II.17: reconhecimento do que não se sabe. Afinidade de pergunta não implica influência histórica nem identidade doutrinária."
+      ]
+    },
+    {
+      "id": "cf389f33-7bea-4eae-8934-c0c045e78b65",
+      "from": "2a4985bf-ab03-455f-8e99-a860e5cc72cc",
+      "to": "3b0d2653-e0ff-454a-8a2a-1ed1f3b5a044",
+      "type": "reception",
+      "evidence": [
+        "O Met identifica a inclusão de Platão como referência ao autor do Fédon: https://www.metmuseum.org/art/collection/search/436105"
+      ]
+    },
+    {
+      "id": "c7c35b76-ddc2-4845-87d0-7757dc3e7842",
+      "from": "5d05b2f6-9dce-48ce-81c5-a1ae0e17da42",
+      "to": "f2ff4c8a-ad21-4db9-8a56-bcc04351a960",
+      "type": "reception",
+      "evidence": [
+        "Conjunto de memória e culto descrito pela UNESCO: https://whc.unesco.org/en/list/704/"
+      ]
+    }
+  ],
+  "ids": {
+    "apology": "f5fd1e74-5c2d-4fe2-83b2-25aeff692909",
+    "analects": "c42075b4-92d6-4231-879f-3834fccc5e24",
+    "plato": "3b0d2653-e0ff-454a-8a2a-1ed1f3b5a044",
+    "conf": "f2ff4c8a-ad21-4db9-8a56-bcc04351a960",
+    "art": "2a4985bf-ab03-455f-8e99-a860e5cc72cc"
+  }
+}
