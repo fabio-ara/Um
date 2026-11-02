@@ -1,3 +1,4 @@
+import {Buffer} from 'node:buffer';
 import {z} from 'zod';
 import {id,revision,type Identity} from './contracts.ts';
 import {unitSchema,resourceSchema,choiceSchema,coverageSchema,reasonSchema,bundleSchema} from './content-schemas.ts';

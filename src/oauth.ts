@@ -1,3 +1,5 @@
+import process from 'node:process';
+import {Buffer} from 'node:buffer';
 // Validation/redirect/body-limit patterns adapted from AraLearn's MIT action
 // OAuth handler. Um has independent grants, resource binding and PKCE; it never
 // accepts an AraLearn token or changes the shared Supabase access-token hook.

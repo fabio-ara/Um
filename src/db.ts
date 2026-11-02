@@ -1,3 +1,4 @@
+import process from 'node:process';
 // Transação com papel/claims por requisição, adaptada de AraRead (MIT).
 // @deno-types="npm:@types/pg@8.15.5"
 import pg from 'pg';

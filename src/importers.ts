@@ -1,3 +1,4 @@
+import {Buffer} from 'node:buffer';
 // Adaptado de AraRead, MIT, Copyright (c) 2026 Fabio Ara.
 import { lookup } from 'node:dns/promises';
 import {createHash} from 'node:crypto';

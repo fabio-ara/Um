@@ -1,3 +1,4 @@
+import {Buffer} from 'node:buffer';
 import {randomUUID} from 'node:crypto';
 import {z} from 'zod';
 import {id,revision,type Identity,type SourceBlock} from './contracts.ts';

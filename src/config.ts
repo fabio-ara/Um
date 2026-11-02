@@ -1,3 +1,4 @@
+import process from 'node:process';
 import {isPublishableKey} from './public-key.ts';
 const local=process.env.APP_MODE==='local';
 const supabase=process.env.SUPABASE_URL;

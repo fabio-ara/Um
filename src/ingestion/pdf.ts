@@ -1,3 +1,4 @@
+import type {Buffer} from 'node:buffer';
 // Reutilizado de AraRead, MIT, Copyright (c) 2026 Fabio Ara.
 import type {Block} from './contracts.ts';
 import {AppError,ensure} from '../errors.ts';
