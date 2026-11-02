@@ -5,7 +5,7 @@ const supabase=process.env.SUPABASE_URL;
 const publishable=process.env.SUPABASE_PUBLISHABLE_KEY||process.env.SUPABASE_ANON_KEY;
 if(!local&&publishable&&!isPublishableKey(publishable))throw Error('Configuração exige uma chave pública do Supabase.');
 export const config = {
-  name: 'Um', version: '0.1.0', local,
+  name: 'Um', version: '0.1.1', local,
   port: Number(process.env.PORT || 4417),
   origin: process.env.APP_ORIGIN || (local?'http://127.0.0.1:4419':'https://fabio-ara.github.io/Um/'),
   apiOrigin: process.env.API_ORIGIN || (supabase?supabase+'/functions/v1/um-api':'http://127.0.0.1:4417'),

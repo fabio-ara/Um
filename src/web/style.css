@@ -7,6 +7,7 @@
 .brand{grid-column:2;font-size:1rem;font-weight:600;color:var(--text-primary)}
 .top-actions{grid-column:3;justify-self:end;flex-wrap:nowrap}
 .icon-button{border-color:var(--border-default);background:var(--surface-raised)}
+.icon-button[hidden]{display:none}
 .nav{border:1px solid var(--border-subtle);border-radius:14px;background:var(--surface-sunken);padding:3px;gap:4px;margin:12px 0 16px}
 .nav .icon-button{border-color:transparent;background:transparent}
 .nav .icon-button[aria-current=page]{border-color:var(--border-default);background:var(--surface-raised);color:var(--accent)}

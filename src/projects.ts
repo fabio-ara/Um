@@ -6,6 +6,8 @@ import {ensure} from './errors.ts';
 import {validateForm,validateSubmission,effectiveAnswers,visibleQuestions} from './forms.ts';
 import {authoringSummary} from './authoring.ts';
 import {configurationSchema as configuration,requirementsSchema,intentionSchema} from './parameters.ts';
+import {config} from './config.ts';
+import {appLink} from './app-links.ts';
 
 const short=z.string().trim().min(1).max(2000);
 const page={offset:z.number().int().min(0).default(0),limit:z.number().int().min(1).max(50).default(20)};
@@ -52,12 +54,13 @@ export async function projectTask(identity:Identity,task:keyof typeof projectSch
    const project=await projectRow(db,a.projectId);
    const participation=(await db.query('select p.*,f.published as form_published,f.revision as form_revision,s.form_revision as submitted_form_revision from um.participations p left join um.forms f on f.id=p.form_id left join um.submissions s on s.id=p.submission_id where p.project_id=$1 order by p.id',[a.projectId])).rows;
    const authoring=await authoringSummary(db,project.id);
-   return {project,authoring,participations:participation.map(p=>({...p,nextAction:p.state==='producing'?'authoring_list':nextAction(project,p)})),nextAction:authoring.items.some(d=>d.status==='draft')?'authoring_list':!project.sourceIds.length?'include_sources':!participation.length?'add_participant':project.activeRevision?'resume_participant':'prepare_standard'};
+   return {project,authoring,participations:participation.map(p=>({...p,formUrl:p.form_published?appLink(config.origin,'form',p.form_id):null,nextAction:p.state==='producing'?'authoring_list':nextAction(project,p)})),nextAction:authoring.items.some(d=>d.status==='draft')?'authoring_list':!project.sourceIds.length?'include_sources':!participation.length?'add_participant':project.activeRevision?'resume_participant':'prepare_standard'};
   }
   if(task==='form_get'){
    const f=await formRow(db,a.formId);
    const draft=(await db.query("select revision,data from um.reader_records where id=$1 and kind='draft' and account_id=$2",[f.id,identity.id])).rows[0];
-   return {definition:f.definition,published:f.published,draft:draft?{...draft,answers:effectiveAnswers(f.definition,draft.data.answers)}:null};
+   const submitted=(await db.query('select id,revision,form_revision,answers from um.submissions where form_id=$1 order by revision desc limit 1',[f.id])).rows[0];
+   return {definition:f.definition,published:f.published,draft:draft?{...draft,answers:effectiveAnswers(f.definition,draft.data.answers)}:null,submission:submitted?{id:submitted.id,revision:submitted.revision,formRevision:submitted.form_revision,answers:submitted.answers}:null};
   }
   if(task==='submission_get'){const row=(await db.query('select * from um.submissions where id=$1',[a.submissionId])).rows[0];ensure(row,'NOT_FOUND','Envio indisponível.',404);return row;}
   if(task==='submission_list')return {items:(await db.query('select * from um.submissions where project_id=$1 and profile_id=$2 order by submitted_at desc,id limit $3 offset $4',[a.projectId,a.profileId,a.limit,a.offset])).rows,...pageValues(a)};
@@ -87,7 +90,7 @@ export async function projectTask(identity:Identity,task:keyof typeof projectSch
    if(task==='form_publish'){
     const f=await formRow(db,a.formId);await requireOwner(db,f.project_id,identity);validateForm(f.definition);
     const r=await db.query('update um.forms set published=true where id=$1 and revision=$2 returning id',[f.id,a.expectedRevision]);ensure(r.rowCount,'CONFLICT','Formulário mudou.',409);
-    await db.query("update um.participations set state='form_available' where project_id=$1 and profile_id=$2",[f.project_id,f.profile_id]);return {formId:f.id,revision:f.revision,published:true};
+    await db.query("update um.participations set state='form_available' where project_id=$1 and profile_id=$2",[f.project_id,f.profile_id]);return {formId:f.id,revision:f.revision,published:true,formUrl:appLink(config.origin,'form',f.id)};
    }
    if(task==='form_draft'||task==='form_submit'){
     const f=await formRow(db,a.formId);ensure(f.published&&f.revision===a.formRevision,'CONFLICT','Formulário atualizado. Reabra para conferir o percurso.',409);

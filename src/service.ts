@@ -21,6 +21,7 @@ const systemSchemas={
 };
 export const schemas={...systemSchemas,...profileSchemas,...sourceSchemas,...projectSchemas,...publicationSchemas,...readerSchemas,...catalogSchemas,...retentionSchemas,...authoringSchemas,...parameterSchemas};
 export type TaskName=keyof typeof schemas;
+export const appOnlyTasks=new Set<TaskName>(['form_draft','form_submit','account_grant_set']);
 export const readTasks=new Set(['capabilities','operation_get','account_grants',...profileReadTasks,...sourceReadTasks,...projectReadTasks,...publicationReadTasks,...readerReadTasks,...catalogReadTasks,...retentionReadTasks,...authoringReadTasks,...parameterReadTasks]);
 const detailed:Partial<Record<TaskName,string>>={
  capabilities:'Lista tarefas tipadas e a fronteira entre autoria no ChatGPT e estudo no aplicativo. Leia antes de iniciar.',
@@ -45,8 +46,9 @@ const detailed:Partial<Record<TaskName,string>>={
  note_share:'Compartilha explicitamente uma cópia da nota como comentário ancorado no estudo; conserva a nota privada.',
 };
 export const descriptions=Object.fromEntries(Object.keys(schemas).map(name=>[name,detailed[name as TaskName]||`${name.replaceAll('_',' ')}. ${readTasks.has(name)?'Consulta somente objetos autorizados; resultados paginados quando aplicável.':'Tarefa tipada sobre objetos autorizados. Use operationId estável; confira revisões antes de editar e consulte operation_get se a resposta se perder.'}`])) as Record<TaskName,string>;
-export async function execute(name:TaskName,input:unknown,identity:Identity):Promise<unknown>{
+export async function execute(name:TaskName,input:unknown,identity:Identity,channel:'app'|'mcp'='app'):Promise<unknown>{
  ensure(Object.hasOwn(schemas,name),'NOT_FOUND','Tarefa inexistente.',404);
+ ensure(!(channel==='mcp'||identity.clientId)||!appOnlyTasks.has(name),'FORBIDDEN','Esta ação é feita pela pessoa na própria conta no aplicativo.',403);
  // Resolve current grants even when the task later performs only reads.
  await transaction(identity,async()=>ensure(readTasks.has(name)||identity.permission==='write','FORBIDDEN','Cliente autorizado somente para leitura.',403));
  try{
@@ -60,7 +62,7 @@ export async function execute(name:TaskName,input:unknown,identity:Identity):Pro
   if(Object.hasOwn(authoringSchemas,name))return await authoringTask(identity,name as keyof typeof authoringSchemas,input);
   if(Object.hasOwn(parameterSchemas,name))return await parameterTask(identity,name as keyof typeof parameterSchemas,input);
   const a=systemSchemas[name as keyof typeof systemSchemas].parse(input) as any;
-  if(name==='capabilities')return {program:'UM-20261101-v1',authoring:'ChatGPT Web/MCP',study:'Pages/Android',tasks:Object.keys(schemas).map(n=>({name:n,readOnly:readTasks.has(n),description:descriptions[n as TaskName]})),contracts:{offsets:'unicode-code-points-[start,end)',files:'openai/fileParams',receipts:'stable-operationId',personalization:'prepared-from-authorized-submission'},hostFileProof:'not-certified'};
+  if(name==='capabilities')return {program:'UM-20261101-v1',authoring:'ChatGPT Web/MCP',study:'Pages/Android',tasks:Object.keys(schemas).filter(n=>!(channel==='mcp'||identity.clientId)||!appOnlyTasks.has(n as TaskName)).map(n=>({name:n,readOnly:readTasks.has(n),description:descriptions[n as TaskName]})),contracts:{offsets:'unicode-code-points-[start,end)',files:'openai/fileParams',receipts:'stable-operationId',personalization:'prepared-from-authorized-submission'},hostFileProof:'not-certified'};
   if(name==='account_grants')return accountClients(identity);
   return await transaction(identity,async db=>{
    if(name==='operation_get'){

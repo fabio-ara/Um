@@ -4,6 +4,9 @@ declare const __UM_API__:string;
 export const apiOrigin=__UM_API__.replace(/\/$/,'');
 const configKey='um-public-config:'+apiOrigin;
 const settings=await fetch(apiOrigin+'/api/config',{signal:AbortSignal.timeout(8000)}).then(async r=>{if(!r.ok)throw Error('Serviço do Um indisponível.');const value=await r.json();localStorage.setItem(configKey,JSON.stringify(value));return value;}).catch(error=>{const cached=localStorage.getItem(configKey);if(cached)return JSON.parse(cached);throw error;});
+export const mcpUrl:string=settings.mcpUrl;
+export const appUrl:string=settings.appUrl||new URL('./',document.baseURI).href;
+export const recoveryLink=new URLSearchParams(location.hash.slice(1)).get('type')==='recovery'||new URLSearchParams(location.search).get('recovery')==='1';
 export const auth=createClient(settings.supabaseUrl,settings.publishableKey,{auth:{storageKey:'um-auth-v1',persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}).auth;
 export const consentAuth=()=>createClient(settings.supabaseUrl,settings.publishableKey,{auth:{storageKey:'um-consent-transient',persistSession:false,autoRefreshToken:false,detectSessionInUrl:false}}).auth;
 export async function requireAccount(accountId:string){const {data:{session}}=await auth.getSession();if(session?.user.id!==accountId)throw new AppError('UNAUTHENTICATED','A conta mudou. Reabra o estudo na conta atual.',401);return session;}

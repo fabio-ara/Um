@@ -5,7 +5,10 @@ aplicativo web/Android. Programa `UM-20261101-v1`.
 
 [Abrir o Um](https://fabio-ara.github.io/Um/) · [APK e releases](https://github.com/fabio-ara/Um/releases)
 
-Entre na sua conta no aplicativo para preencher formulários e retomar os estudos.
+Entre com e-mail e senha. Para estudar por conta própria, use **Criar meu perfil**;
+não é necessário receber convite. Se outra pessoa prepara o estudo, ela compartilha
+o convite com você. Veja o [guia de primeiros passos](docs/primeiros-passos.md).
+
 A autoria usa o conector MCP no ChatGPT, com este endereço:
 `https://jrfkphuhcseqmratijjr.supabase.co/functions/v1/um-api/mcp`.
 Autorize a conexão na conta correta; depois siga a [jornada de autoria](docs/autoria-mcp.md).

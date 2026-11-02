@@ -5,6 +5,8 @@ import {id} from './contracts.ts';
 import {ensure} from './errors.ts';
 import {personalExportSchemas,personalExportTask} from './personal-export.ts';
 import {operation,transaction,priorOperation,type Transaction} from './db.ts';
+import {config} from './config.ts';
+import {appLink} from './app-links.ts';
 const fieldsSchema=z.record(z.string().min(1).max(80),z.string().max(4000)).refine(v=>Object.keys(v).length<=40,'Perfil excede 40 campos.');
 const digest=(token:string)=>createHash('sha256').update(token).digest('hex');
 function profile(row:any):Profile{return {id:row.id,creatorId:row.creator_id,holderId:row.holder_id,creatorAccess:row.creator_access,visibility:row.visibility,fields:row.fields,revision:row.revision};}
@@ -49,7 +51,7 @@ export async function profileTask(identity:Identity,task:keyof typeof profileSch
         const token=randomBytes(32).toString('base64url');
         const q=await db.query("insert into um.invites(profile_id,token_hash,expires_at,created_by) values($1,$2,now()+make_interval(hours=>$3),$4) returning id,expires_at",[args.profileId,digest(token),args.expiresInHours,identity.id]);
         // Token is a deliberate invitation capability. It is returned only to its creator.
-        return {inviteId:q.rows[0].id,profileId:args.profileId,token,expiresAt:q.rows[0].expires_at.toISOString()};
+        return {inviteId:q.rows[0].id,profileId:args.profileId,token,inviteUrl:appLink(config.origin,'invite',token),expiresAt:q.rows[0].expires_at.toISOString()};
       }
       if(task==='invite_revoke'){
         const q=await db.query('update um.invites set revoked=true where id=$1 returning id',[args.inviteId]);ensure(q.rowCount,'NOT_FOUND','Convite indisponível.',404);return {inviteId:args.inviteId};

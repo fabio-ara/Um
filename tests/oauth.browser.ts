@@ -22,9 +22,12 @@ test('consentimento real mantém sessão do aplicativo, conecta MCP e revoga pel
   const initialized=await rpc('initialize',{protocolVersion:'2025-11-25',capabilities:{},clientInfo:{name:'Um focal HTTP',version:'1'}});expect(initialized.result.serverInfo.name).toBe('Um');
   const listed=await rpc('tools/list',{});expect(listed.result.tools.find((t:any)=>t.name==='source_import')._meta['openai/fileParams']).toEqual(['file']);
   expect(listed.result.tools.find((t:any)=>t.name==='parameter_save').inputSchema.properties.configuration).toBeTruthy();
+  expect(listed.result.tools.some((t:any)=>['form_draft','form_submit','account_grant_set'].includes(t.name))).toBe(false);
+  expect(listed.result.tools.some((t:any)=>t.name==='profile_create')).toBe(true);
   const saved=await rpc('tools/call',{name:'parameter_save',arguments:{operationId:crypto.randomUUID(),scope:'account',expectedRevision:0,configuration:{editorial:{language:'pt'},instructional:{}},requirements:['Conferir a fonte'],intention:'Fixture do contrato MCP de parâmetros'}});expect(saved.result.structuredContent.data.result.revision).toBe(1);
   const parameters=await rpc('tools/call',{name:'parameter_get',arguments:{scope:'account'}});expect(parameters.result.structuredContent.data.effective.editorial.language).toBe('pt');
   const called=await rpc('tools/call',{name:'capabilities',arguments:{}});expect(called.result.structuredContent.data.program).toBe('UM-20261101-v1');
+  expect(called.result.structuredContent.data.tasks.map((t:any)=>t.name).sort()).toEqual(listed.result.tools.map((t:any)=>t.name).sort());
   const revoke=await fetch(origin+'/api/account_grant_set',{method:'POST',headers:{Authorization:'Bearer '+account.session.access_token,'content-type':'application/json'},body:JSON.stringify({operationId:crypto.randomUUID(),clientId,permission:'revoke'})});expect(revoke.status).toBe(200);
   const denied=await fetch(resource,{method:'POST',headers:{Authorization:'Bearer '+token,'content-type':'application/json',Accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:2,method:'tools/list'})});expect(denied.status).toBe(401);
  }finally{await page.close();if(clientId)await ctx.admin.query('delete from um.oauth_clients where id=$1',[clientId]);await ctx.close();}

@@ -2,6 +2,22 @@
 
 `capabilities` lista as tarefas tipadas; o recurso `um://assistant/guidance` orienta a primeira e a segunda tomada. A autoria acontece no ChatGPT. O aplicativo apresenta formulário, estudo e colaboração.
 
+## Primeira utilização e papéis
+
+A autoria e todos os parâmetros pedagógicos ficam no MCP; o aplicativo não tem painel web nem autoria em quatro fases. Na primeira tomada, identifique obra ou tema, fontes autorizadas, padrão compatível e perfis antes de publicar o formulário. A base já publicada continua acessível independentemente da preparação seguinte.
+
+Quem estuda por conta própria não precisa de convite: `profile_create` com `self=true` cria o perfil do próprio titular e é o mesmo caminho do botão Criar meu perfil no aplicativo. Para outro destinatário, use `profile_create` com `self=false` e depois `invite_create`; a resposta traz `inviteUrl` e `token`. O autor compartilha esse link pelo canal que preferir. O Um não envia e-mail automaticamente.
+
+## Formulário, link e retomada
+
+Publique com `form_publish`; a resposta traz `formUrl`. `project_get` expõe `participations[].formUrl` com o link publicado, para retomar sem pedir identificadores. O link usa `#form=id`: depois do login, preserva o destino e exige o titular do perfil. Quando existe link, não peça ID, hash ou código técnico à pessoa. O formulário é respondido uma pergunta por vez no aplicativo.
+
+`form_draft` e `form_submit` são exclusivos do aplicativo e não integram o catálogo MCP, assim como `account_grant_set`. Perfis, convites e demais controles continuam disponíveis no MCP conforme a autorização. Nenhuma submissão deve ser inventada: só a submissão real do titular conta.
+
+## Depois do envio
+
+A publicação consistente é automática; não há aprovação humana inventada. Depois de enviar, a pessoa deve voltar ao ChatGPT e pedir a continuação; não há agente de fundo observando envios. Na segunda conversa, leia a submissão real e produza os complementos vinculados à base.
+
 `project_get` recupera o projeto, as participações, as revisões e a próxima ação. `authoring_list` pagina as preparações. `authoring_get` apresenta o índice, as quantidades por espécie e a próxima etapa registrada pelo autor. A consulta não altera leitura nem declara aprendizagem.
 
 Para uma produção extensa:
