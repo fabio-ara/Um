@@ -1,0 +1,45 @@
+name: um
+services:
+  db:
+    image: postgres:17.11
+    ports: ["127.0.0.1:57432:5432"]
+    environment:
+      POSTGRES_DB: um
+      POSTGRES_PASSWORD: um-local-admin-only
+    volumes:
+      - um_pg:/var/lib/postgresql/data
+      - ./scripts/local-bootstrap.sql:/docker-entrypoint-initdb.d/001-local.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d um"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  auth:
+    image: supabase/gotrue:v2.197.0
+    depends_on:
+      db: {condition: service_healthy}
+    ports: ["127.0.0.1:4418:9999"]
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: http://127.0.0.1:4417/auth/v1
+      GOTRUE_SITE_URL: http://127.0.0.1:4419
+      GOTRUE_URI_ALLOW_LIST: http://127.0.0.1:4419/**
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:um-local-auth-only@db:5432/um
+      GOTRUE_DB_NAMESPACE: auth
+      GOTRUE_JWT_SECRET: um-local-test-signing-secret-at-least-32-characters
+      GOTRUE_JWT_KEYS: ${LOCAL_JWT_KEYS:?Execute npm run local:setup}
+      GOTRUE_JWT_ISSUER: http://127.0.0.1:4417/auth/v1
+      GOTRUE_JWT_AUD: authenticated
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_ADMIN_ROLES: service_role
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: true
+      GOTRUE_MAILER_AUTOCONFIRM: true
+      GOTRUE_DISABLE_SIGNUP: false
+      GOTRUE_OAUTH_SERVER_ENABLED: true
+      GOTRUE_OAUTH_SERVER_ALLOW_DYNAMIC_REGISTRATION: true
+      GOTRUE_OAUTH_SERVER_AUTHORIZATION_PATH: /consent
+volumes:
+  um_pg:
