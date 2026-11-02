@@ -5,6 +5,12 @@ do servidor Node. Prepare com `npx tsx scripts/stage-edge.ts` e confira com Deno
 usando o `deno.json` gerado e o lock versionado. A publicação exige a candidata
 revisada e limpa, identificada por `UM_CANDIDATE_SHA`; preparar não publica.
 
+O gateway hospedado encaminha o caminho com o nome da função, sem `/functions/v1`.
+O adaptador restaura a URL pública antes do handler compartilhado, preservando
+corpo, autorização e query de OAuth. Somente o prefixo da função configurada é
+traduzido; rotas de outras funções não são aceitas. Veja o [contrato de roteamento
+do Supabase](https://supabase.com/docs/guides/functions/http-methods).
+
 Configuração hospedada: `SUPABASE_URL`, chave pública `SUPABASE_ANON_KEY` ou
 `SUPABASE_PUBLISHABLE_KEY`, conexão de banco do servidor e `UM_OAUTH_ENCRYPTION_KEY`
 (32 bytes aleatórios em base64url). `APP_ORIGIN` aponta para o Pages do Um;
