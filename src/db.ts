@@ -1,4 +1,5 @@
 // Transação com papel/claims por requisição, adaptada de AraRead (MIT).
+// @deno-types="npm:@types/pg@8.15.5"
 import pg from 'pg';
 import {createHash} from 'node:crypto';
 import type {Identity, Receipt} from './contracts.ts';
@@ -22,7 +23,8 @@ export async function transaction<T>(identity: Identity, fn: (db: Transaction) =
     if (identity.clientId) {
       const grant = await db.query('select permission from um.client_grants where account_id=$1 and client_id=$2', [identity.id, identity.clientId]);
       ensure(grant.rowCount, 'FORBIDDEN', 'Cliente sem autorização vigente para o Um.', 403);
-      identity.permission = grant.rows[0].permission;
+      // A later grant upgrade must not elevate an already issued read token.
+      if(grant.rows[0].permission==='read')identity.permission='read';
     }
     const result = await fn(db);
     await db.query('commit');

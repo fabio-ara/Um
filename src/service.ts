@@ -9,6 +9,7 @@ import {catalogSchemas,catalogTask,catalogReadTasks} from './catalog.ts';
 import {retentionSchemas,retentionTask,retentionReadTasks} from './retention.ts';
 import {transaction,operation} from './db.ts';
 import {ensure,AppError} from './errors.ts';
+import {accountClients} from './oauth.ts';
 
 const systemSchemas={
  capabilities:z.strictObject({}),
@@ -49,6 +50,7 @@ export async function execute(name:TaskName,input:unknown,identity:Identity):Pro
   if(Object.hasOwn(retentionSchemas,name))return await retentionTask(identity,name as keyof typeof retentionSchemas,input);
   const a=systemSchemas[name as keyof typeof systemSchemas].parse(input) as any;
   if(name==='capabilities')return {program:'UM-20261101-v1',authoring:'ChatGPT Web/MCP',study:'Pages/Android',tasks:Object.keys(schemas).map(n=>({name:n,readOnly:readTasks.has(n),description:descriptions[n as TaskName]})),contracts:{offsets:'unicode-code-points-[start,end)',files:'openai/fileParams',receipts:'stable-operationId',personalization:'prepared-from-authorized-submission'},hostFileProof:'not-certified'};
+  if(name==='account_grants')return accountClients(identity);
   return transaction(identity,async db=>{
    if(name==='operation_get'){
     const row=(await db.query('select task,result,committed_at from um.operations where account_id=$1 and id=$2',[identity.id,a.operationId])).rows[0];if(!row)return null;
@@ -57,7 +59,6 @@ export async function execute(name:TaskName,input:unknown,identity:Identity):Pro
     return {operationId:a.operationId,status:'confirmed',result,committedAt:row.committed_at.toISOString()};
    }
    ensure(!identity.clientId,'FORBIDDEN','Gerencie autorizações pela própria conta no aplicativo.',403);
-   if(name==='account_grants')return {items:(await db.query('select client_id,permission from um.client_grants where account_id=$1',[identity.id])).rows};
    return operation(db,identity,a.operationId,name,a,async()=>{if(a.permission==='revoke')await db.query('delete from um.client_grants where account_id=$1 and client_id=$2',[identity.id,a.clientId]);else await db.query('insert into um.client_grants values($1,$2,$3) on conflict(account_id,client_id) do update set permission=excluded.permission',[identity.id,a.clientId,a.permission]);return {clientId:a.clientId,permission:a.permission};});
   });
  }catch(error){if(error instanceof z.ZodError)throw new AppError('VALIDATION','Parâmetros incompatíveis com o contrato.',400,error.issues.map(i=>({path:i.path,message:i.message})));throw error;}

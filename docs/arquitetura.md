@@ -21,3 +21,22 @@ os gates de preservação. A configuração de Auth compartilhada não será sub
 Arquivos grandes ficam no Storage; o banco mantém índices, permissões e metadados.
 O desenho não é prova de implantação ou de autorização: os resultados executados
 e os limites constam do STATUS.
+
+O MCP usa autorizações próprias do Um: código de uso único, PKCE S256, recurso
+exato e tokens opacos. O consentimento abre uma sessão de conta separada, mantida
+somente em memória no aplicativo. O servidor guarda sua renovação cifrada com uma
+chave exclusiva, sem alterar o hook OAuth do serviço compartilhado. Revogar o cliente
+invalida suas autorizações anteriores; autorizar novamente não reativa tokens antigos.
+O consentimento de leitura também não ganha escrita por uma mudança posterior.
+
+Node e o adaptador de Edge usam `src/http.ts`. A preparação por
+`scripts/stage-edge.ts` copia apenas fontes de runtime e dependências fixadas;
+`--release` exige árvore limpa e `UM_CANDIDATE_SHA` igual ao HEAD. A função hospedada
+exige HTTPS e chave pública para operações do Storage com o JWT de cada usuário.
+As transações assumem papéis limitados; o papel público não acessa o estado OAuth.
+
+As políticas em `supabase/storage/um-private.sql` são aditivas e específicas do
+bucket Um. Leitura depende dos metadados autorizados; um pedido de remoção permite
+somente a operação de remover, sem permitir download ou URL assinada. A confirmação
+da fila exige que a linha do Storage tenha desaparecido. A remoção física usa a API
+de Storage, nunca `DELETE` direto em `storage.objects`.
