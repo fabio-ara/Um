@@ -9,6 +9,7 @@ import {AppError,ensure} from './errors.ts';
 import {execute,schemas,type TaskName} from './service.ts';
 import {getFile} from './files.ts';
 import {mcpHandler} from './mcp.ts';
+import {authProxyUrl} from './auth-proxy.ts';
 export function createApp(){
  const app=express();app.disable('x-powered-by');
  const allowed=new Set([new URL(config.origin).origin,...(config.local?['http://localhost:4419']:[])]);
@@ -23,9 +24,9 @@ export function createApp(){
  app.get('/api/config',(_req,res)=>res.json({name:'Um',version:config.version,local:config.local,supabaseUrl:config.local?config.apiOrigin:config.storageUrl,publishableKey:config.local?'local-publishable-placeholder':config.storageKey,mcpUrl:config.apiOrigin+'/mcp'}));
  app.get(['/.well-known/oauth-protected-resource','/.well-known/oauth-protected-resource/mcp'],(_req,res)=>res.json({resource:config.apiOrigin+'/mcp',authorization_servers:[config.apiOrigin],scopes_supported:['um.read','um.write'],bearer_methods_supported:['header']}));
  if(config.local)app.use('/auth/v1',express.raw({type:()=>true,limit:'32kb'}),async(req,res)=>{
-  const path=req.originalUrl.slice('/auth/v1'.length);ensure(!path.startsWith('/admin'),'FORBIDDEN','Rota de administração não exposta.',403);
+  const destination=authProxyUrl(req.originalUrl,config.authUrl);
   const headers:Record<string,string>={};for(const k of ['authorization','content-type','apikey','x-client-info','x-supabase-api-version'])if(typeof req.headers[k]==='string')headers[k]=req.headers[k] as string;
-  const r=await fetch(config.authUrl+path,{method:req.method,headers,body:['GET','HEAD'].includes(req.method)?undefined:req.body,redirect:'manual',signal:AbortSignal.timeout(10000)});
+  const r=await fetch(destination,{method:req.method,headers,body:['GET','HEAD'].includes(req.method)?undefined:req.body,redirect:'manual',signal:AbortSignal.timeout(10000)});
   for(const k of ['content-type','location','retry-after']){const v=r.headers.get(k);if(v)res.set(k,v);}res.status(r.status).send(Buffer.from(await r.arrayBuffer()));
  });
  app.use(express.json({limit:'16mb'}));

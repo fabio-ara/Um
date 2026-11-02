@@ -1,7 +1,7 @@
 import {z} from 'zod';
 import {id,revision,type Identity,type Manifest,type Anchor,type ContentBundle,type SourceBlock} from './contracts.ts';
 import {bundleSchema,reasonSchema} from './content-schemas.ts';
-import {transaction,operation} from './db.ts';
+import {transaction,operation,priorOperation} from './db.ts';
 import {ensure} from './errors.ts';
 import {validateBundle} from './editorial.ts';
 import {validateAnchor,validateLinks} from './anchors.ts';
@@ -37,6 +37,10 @@ export async function publicationTask(identity:Identity,task:keyof typeof public
  });
  const b=a.bundle as ContentBundle;validateBundle(b);
  const p=await transaction(identity,db=>projectRow(db,b.projectId));ensure(p.ownerId===identity.id,'FORBIDDEN','Somente o autor publica este projeto.',403);
+ const replay=await transaction(identity,async db=>{
+  if(b.profileId)ensure((await db.query('select um.profile_access($1) as allowed',[b.profileId])).rows[0].allowed,'FORBIDDEN','Perfil sem autorização vigente.',403);
+  return priorOperation(db,identity,a.operationId,task,a);
+ });if(replay)return replay;
  const sources=new Map<string,Awaited<ReturnType<typeof sourceView>>>();
  for(const sourceId of p.sourceIds)sources.set(sourceId,await sourceView(identity,sourceId));
  ensure(sources.size,'SOURCE_REQUIRED','Inclua as fontes do projeto antes de publicar.');
@@ -62,6 +66,8 @@ export async function publicationTask(identity:Identity,task:keyof typeof public
    ensure(project.activeRevision===b.baseRevision,'STALE_BASE','Base alterada durante a preparação.',409);
    const part=(await db.query('select * from um.participations where project_id=$1 and profile_id=$2 for update',[b.projectId,b.profileId])).rows[0];ensure(part?.submission_id,'SUBMISSION_REQUIRED','A segunda tomada exige respostas enviadas pelo titular.',409);
    const submission=(await db.query('select * from um.submissions where id=$1',[part.submission_id])).rows[0];ensure(submission,'FORBIDDEN','Respostas sem autorização vigente.',403);
+   const holder=(await db.query('select holder_id from um.profiles where id=$1',[b.profileId])).rows[0]?.holder_id;
+   ensure(submission.project_id===b.projectId&&submission.profile_id===b.profileId&&submission.form_id===part.form_id&&submission.respondent_id===holder,'SUBMISSION_REQUIRED','A tomada deve usar respostas deste titular, perfil, projeto e formulário.',409);
    const f=(await db.query('select revision from um.forms where id=$1',[part.form_id])).rows[0];ensure(f?.revision===submission.form_revision,'STALE_SUBMISSION','O formulário mudou. Aguarde o novo envio.',409);
    const objects=new Set([...b.resources,...b.choices].map(x=>x.id));ensure(a.reasons.length===objects.size,'REASONS_REQUIRED','Forneça uma justificativa para cada complemento.');
    for(const reason of a.reasons){ensure(objects.has(reason.resourceId)&&reason.submissionId===submission.id&&reason.submissionRevision===submission.revision,'PRIVATE_REASON','Justificativa não corresponde a esta tomada.');ensure(reason.questionIds.every((q:string)=>Object.hasOwn(submission.answers,q)),'PRIVATE_REASON','Justificativa cita resposta ausente.');}
@@ -73,8 +79,8 @@ export async function publicationTask(identity:Identity,task:keyof typeof public
   // Referenced source files join the package only when their rights allow offline use.
   for(const sourceId of sources.keys()){
    const s=(await db.query('select s.original_file,r.body_file from um.sources s join um.source_revisions r on r.source_id=s.id where s.id=$1 and r.revision=$2',[sourceId,sources.get(sourceId)!.revision])).rows[0];
-   manifest.sourceIndex.push({id:sourceId,revision:sources.get(sourceId)!.revision,title:sources.get(sourceId)!.metadata.title,path:s.body_file,original:s.original_file});
-   const rows=(await db.query('select * from um.files where path=any($1::text[])',[[s.body_file,s.original_file].filter(Boolean)])).rows;
+   manifest.sourceIndex.push({id:sourceId,revision:sources.get(sourceId)!.revision,title:sources.get(sourceId)!.metadata.title,path:s.body_file,original:sources.get(sourceId)!.metadata.rights.offlineAllowed?s.original_file:null});
+   const rows=(await db.query('select * from um.files where path=any($1::text[]) and offline_allowed',[[s.body_file,s.original_file].filter(Boolean)])).rows;
    for(const f of rows)manifest.files.push({path:f.path,sha256:f.sha256,bytes:Number(f.bytes),mediaType:f.media_type,offlineAllowed:f.offline_allowed});
   }
   await db.query("insert into um.bundles(project_id,profile_id,revision,base_revision,manifest,status) values($1,$2,$3,$4,$5,'published')",[b.projectId,b.profileId,b.revision,b.baseRevision,JSON.stringify(manifest)]);

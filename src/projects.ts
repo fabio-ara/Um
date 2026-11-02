@@ -80,7 +80,7 @@ export async function projectTask(identity:Identity,task:keyof typeof projectSch
     ensure(f.revision===a.expectedRevision+1,'REVISION','A revisão do formulário deve avançar uma vez.');
     if(a.expectedRevision===0)await db.query('insert into um.forms(id,project_id,profile_id,revision,definition) values($1,$2,$3,$4,$5)',[f.id,f.projectId,f.profileId,f.revision,JSON.stringify(f)]);
     else {const r=await db.query('update um.forms set revision=$2,definition=$3,published=false where id=$1 and revision=$4 and project_id=$5 and profile_id=$6 returning id',[f.id,f.revision,JSON.stringify(f),a.expectedRevision,f.projectId,f.profileId]);ensure(r.rowCount,'CONFLICT','Formulário mudou.',409);}
-    await db.query("update um.participations set form_id=$3,state=case when submission_id is null then 'invited' else 'stale' end where project_id=$1 and profile_id=$2",[f.projectId,f.profileId,f.id]);return {formId:f.id,revision:f.revision};
+    await db.query("update um.participations set form_id=$3,submission_id=case when form_id=$3 then submission_id else null end,state=case when form_id=$3 and submission_id is not null then 'stale' else 'invited' end where project_id=$1 and profile_id=$2",[f.projectId,f.profileId,f.id]);return {formId:f.id,revision:f.revision};
    }
    if(task==='form_publish'){
     const f=await formRow(db,a.formId);await requireOwner(db,f.project_id,identity);validateForm(f.definition);

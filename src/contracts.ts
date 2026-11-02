@@ -18,7 +18,7 @@ export type Source = {
   title: string; language: string; nature: 'original' | 'translation' | 'commentary' | 'bibliography';
   extent: 'full' | 'fragment' | 'reference'; authors: {name: string; role: 'author' | 'translator' | 'editor' | 'commentator'}[];
   rights: {status: 'public-domain' | 'licensed' | 'permission' | 'private-use'; statement: string; evidence: string; offlineAllowed: boolean};
-  originalFile: string | null; bodyFile: string; sha256: string; metadata: Record<string, unknown>;
+  originalFile: string | null; bodyFile: string; /** Canonical revision bytes. */ sha256: string; /** Original acquisition bytes, used for deduplication. */ originalSha256: string; metadata: Record<string, unknown>;
 };
 export type DocumentLink = {id: string; from: Anchor[]; to: Anchor[]; relation: 'supports' | 'interprets' | 'contrasts' | 'illustrates'; provenance: Provenance};
 export type Condition = {questionId: string; operator: 'equals' | 'in' | 'present'; values?: string[]};

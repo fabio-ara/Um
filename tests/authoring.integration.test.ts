@@ -7,6 +7,7 @@ import {projectTask} from '../src/projects.ts';
 import {sourceTask,sourceView} from '../src/sources.ts';
 import {getFile} from '../src/files.ts';
 import {validateAnchor} from '../src/anchors.ts';
+import {transaction} from '../src/db.ts';
 const ctx=await localContext();after(ctx.close);
 const projectMetadata={object:{kind:'theme',workIds:[],subject:'Diálogo'},scope:'Trecho sintético',language:'pt',audience:'Iniciante',configuration:{editorial:{},instructional:{}}};
 test('fonte adquirida, deduplicação isolada, blocos e revisão histórica autorizados',async()=>{
@@ -22,6 +23,19 @@ test('fonte adquirida, deduplicação isolada, blocos e revisão histórica auto
  assert.equal((await sourceView(author,sourceId)).revision,2);assert.equal((await sourceView(author,sourceId,1)).blocks[0].text,b.text);
  const path=(await ctx.admin.query('select body_file from um.sources where id=$1',[sourceId])).rows[0].body_file;
  await assert.rejects(getFile(other,path),/indisponível/);
+});
+test('direitos distinguem leitura online, original restrito e material de uso privado',async()=>{
+ const author=await ctx.account(),holder=await ctx.account();
+ const sharedProfile=(await profileTask(author,'profile_create',{operationId:uuid(),fields:{name:'Perfil de direitos'}}) as any).result.profileId;
+ const inv=await profileTask(author,'invite_create',{operationId:uuid(),profileId:sharedProfile}) as any;await profileTask(holder,'invite_accept',{operationId:uuid(),token:inv.result.token});
+ const projectId=(await projectTask(author,'project_create',{operationId:uuid(),title:'Direitos sintéticos',metadata:projectMetadata}) as any).result.projectId;
+ await projectTask(author,'participation_add',{operationId:uuid(),projectId,profileId:sharedProfile});
+ const sourceId=(await sourceTask(author,'source_import',{operationId:uuid(),format:'text',text:'Esta fonte sintética permite leitura online aos participantes, mas o original não tem autorização de distribuição offline.',metadata:{title:'Direitos',language:'pt',nature:'original',extent:'fragment',authors:[],rights:{status:'permission',statement:'Somente leitura online',evidence:'Fixture própria',offlineAllowed:false},provenance:'Teste local'}}) as any).result.sourceId;
+ await sourceTask(author,'source_attach',{operationId:uuid(),projectId,sourceId});
+ const row=(await ctx.admin.query('select body_file,original_file from um.sources where id=$1',[sourceId])).rows[0];
+ assert.equal((await sourceView(holder,sourceId)).revision,1);await getFile(holder,row.body_file);await assert.rejects(getFile(holder,row.original_file),/indisponível/);await getFile(author,row.original_file);
+ await transaction(author,db=>db.query("update um.sources set metadata=jsonb_set(metadata,'{rights,status}','\"private-use\"') where id=$1",[sourceId]));
+ await assert.rejects(sourceView(holder,sourceId),/indisponível/);await assert.rejects(getFile(holder,row.body_file),/indisponível/);assert.equal((await sourceView(author,sourceId)).revision,1);
 });
 test('primeira tomada, rascunho, envio idempotente e retomada independente por participante',async()=>{
  const author=await ctx.account(),holder=await ctx.account(),pending=await ctx.account();

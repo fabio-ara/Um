@@ -1,7 +1,7 @@
 import {randomUUID} from 'node:crypto';
 import {z} from 'zod';
 import {id,revision,type Identity,type SourceBlock} from './contracts.ts';
-import {transaction,operation,type Transaction} from './db.ts';
+import {transaction,operation,priorOperation,type Transaction} from './db.ts';
 import {ensure} from './errors.ts';
 import {extract,type ImportInput} from './importers.ts';
 import {blockSchema} from './ingestion/contracts.ts';
@@ -23,14 +23,15 @@ export async function fileRow(db:Transaction,identity:Identity,file:Awaited<Retu
 export async function sourceView(identity:Identity,sourceId:string,sourceRevision?:number){
  const row=await transaction(identity,async db=>{
   const current=(await db.query('select * from um.sources where id=$1',[sourceId])).rows[0];ensure(current,'NOT_FOUND','Fonte indisponível.',404);
-  if(sourceRevision!==undefined&&sourceRevision!==current.revision){const old=(await db.query('select * from um.source_revisions where source_id=$1 and revision=$2',[sourceId,sourceRevision])).rows[0];ensure(old,'NOT_FOUND','Revisão indisponível.',404);return {...current,...old};}return current;
+  const version=(await db.query('select * from um.source_revisions where source_id=$1 and revision=$2',[sourceId,sourceRevision??current.revision])).rows[0];ensure(version,'NOT_FOUND','Revisão indisponível.',404);
+  return {...current,...version,originalSha256:current.sha256};
  });
  const body=JSON.parse((await getFile(identity,row.body_file)).toString('utf8'));
- return {id:sourceId,revision:row.revision,blocks:body.blocks as SourceBlock[],metadata:row.metadata,sha256:row.sha256};
+ return {id:sourceId,revision:row.revision,blocks:body.blocks as SourceBlock[],metadata:row.metadata,sha256:row.sha256,originalSha256:row.originalSha256};
 }
 export async function sourceTask(identity:Identity,task:keyof typeof sourceSchemas,input:unknown):Promise<unknown>{
  const args=sourceSchemas[task].parse(input) as any;
- if(task==='source_list')return transaction(identity,async db=>({items:(await db.query("select id,revision,metadata,sha256 from um.sources where metadata->>'title' ilike $1 order by id limit $2 offset $3",[`%${args.query}%`,args.limit,args.offset])).rows,offset:args.offset,limit:args.limit}));
+ if(task==='source_list')return transaction(identity,async db=>({items:(await db.query("select s.id,s.revision,s.metadata,r.sha256,s.sha256 as \"originalSha256\" from um.sources s join um.source_revisions r on r.source_id=s.id and r.revision=s.revision where s.metadata->>'title' ilike $1 order by s.id limit $2 offset $3",[`%${args.query}%`,args.limit,args.offset])).rows,offset:args.offset,limit:args.limit}));
  if(task==='source_get'){const source=await sourceView(identity,args.sourceId,args.sourceRevision);return {...source,blocks:source.blocks.slice(args.offset,args.offset+args.limit),total:source.blocks.length,offset:args.offset,complete:args.offset===0&&source.blocks.length<=args.limit};}
  if(task==='source_attach')return transaction(identity,db=>operation(db,identity,args.operationId,task,args,async()=>{await db.query('insert into um.project_sources(project_id,source_id) values($1,$2) on conflict do nothing',[args.projectId,args.sourceId]);return {projectId:args.projectId,sourceId:args.sourceId};}));
  if(task==='source_revise'){
@@ -47,13 +48,14 @@ export async function sourceTask(identity:Identity,task:keyof typeof sourceSchem
   }));
  }
  // Authenticate and check capability before contacting an external source.
- await transaction(identity,async()=>ensure(identity.permission==='write','FORBIDDEN','Cliente sem escrita.',403));
+ const intent={metadata:args.metadata,format:args.format,text:args.text,url:args.url,blocks:args.blocks,webInclusionConfirmed:args.webInclusionConfirmed,...(args.file?{fileId:args.file.file_id}: {})};
+ const replay=await transaction(identity,db=>priorOperation(db,identity,args.operationId,task,intent));if(replay)return replay;
  ensure(args.format!=='url'||args.webInclusionConfirmed,'INCLUSION_REQUIRED','Confirme a inclusão da fonte encontrada antes de incorporá-la.',409);
  ensure([args.file!==undefined,args.text!==undefined,args.url!==undefined,args.blocks!==undefined].filter(Boolean).length===1,'VALIDATION','Forneça exatamente um material.');
  const acquired=args.file?await hostFile(args.file):null;
  const extraction=await extract({format:args.format,text:args.text,url:args.url,blocks:args.blocks,filename:acquired?.name,...(acquired?{file_base64:acquired.bytes.toString('base64')}:{})} satisfies ImportInput);
  requireReadable(extraction.quality);
- const sha256=hashBytes(extraction.original),intent={metadata:args.metadata,format:args.format,sha256};
+ const sha256=hashBytes(extraction.original);
  return transaction(identity,db=>operation(db,identity,args.operationId,task,intent,async()=>{
   const prior=await db.query('select id,revision from um.sources where owner_id=$1 and sha256=$2',[identity.id,sha256]);
   if(prior.rowCount)return {sourceId:prior.rows[0].id,revision:prior.rows[0].revision,reused:true};
