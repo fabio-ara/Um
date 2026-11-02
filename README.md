@@ -1,7 +1,15 @@
 # Um
 
 Leitura e estudo em Humanidades. Autoria pelo ChatGPT/MCP; preparação e estudo no
-aplicativo web/Android. Programa `UM-20261101-v1` em estabilização, ainda sem release.
+aplicativo web/Android. Programa `UM-20261101-v1`.
+
+[Abrir o Um](https://fabio-ara.github.io/Um/) · [APK e releases](https://github.com/fabio-ara/Um/releases)
+
+Entre na sua conta no aplicativo para preencher formulários e retomar os estudos.
+A autoria usa o conector MCP no ChatGPT, com este endereço:
+`https://jrfkphuhcseqmratijjr.supabase.co/functions/v1/um-api/mcp`.
+Autorize a conexão na conta correta; depois siga a [jornada de autoria](docs/autoria-mcp.md).
+O aplicativo não exige assinatura de IA para ler o material preparado.
 
 Para desenvolvimento local, com Node 24.14+ e Docker:
 
