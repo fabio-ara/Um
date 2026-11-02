@@ -1,5 +1,5 @@
 import {createHash,randomUUID} from 'node:crypto';
-import {mkdir,readFile,writeFile,rename} from 'node:fs/promises';
+import {mkdir,readFile,writeFile,rename,rm} from 'node:fs/promises';
 import {resolve,dirname,sep} from 'node:path';
 import {createClient} from '@supabase/supabase-js';
 import {z} from 'zod';
@@ -39,4 +39,12 @@ export async function getFile(identity:Identity,path:string):Promise<Buffer>{
  if(config.local)bytes=await readFile(localPath(row.path));
  else{const {data,error}=await storage(identity).download(row.path);ensure(!error&&data,'STORAGE','Arquivo indisponível.',503);bytes=Buffer.from(await data.arrayBuffer());}
  ensure(bytes.length===Number(row.bytes)&&hashBytes(bytes)===row.sha256,'INTEGRITY','O arquivo não corresponde à revisão salva.',409);return bytes;
+}
+/** Only paths from a committed deletion ticket can reach physical deletion. */
+export async function deleteQueuedFile(identity:Identity,path:string):Promise<void>{
+ const allowed=await transaction(identity,async db=>(await db.query('select path from um.file_deletions where path=$1 and requested_by=$2 and completed_at is null',[path,identity.id])).rowCount);
+ ensure(allowed,'NOT_FOUND','Remoção indisponível.',404);
+ if(config.local)await rm(localPath(path),{force:true});
+ else{const {error}=await storage(identity).remove([path]);ensure(!error,'STORAGE','Remoção de arquivo ainda não confirmada.',503);}
+ await transaction(identity,db=>db.query('update um.file_deletions set completed_at=now() where path=$1 and completed_at is null',[path]));
 }

@@ -3,7 +3,7 @@ import {z} from 'zod';
 import type {Identity,Profile} from './contracts.ts';
 import {id} from './contracts.ts';
 import {ensure} from './errors.ts';
-import {operation,transaction,type Transaction} from './db.ts';
+import {operation,transaction,priorOperation,type Transaction} from './db.ts';
 const fieldsSchema=z.record(z.string().min(1).max(80),z.string().max(4000)).refine(v=>Object.keys(v).length<=40,'Perfil excede 40 campos.');
 const digest=(token:string)=>createHash('sha256').update(token).digest('hex');
 function profile(row:any):Profile{return {id:row.id,creatorId:row.creator_id,holderId:row.holder_id,creatorAccess:row.creator_access,visibility:row.visibility,fields:row.fields,revision:row.revision};}
@@ -23,6 +23,9 @@ async function requireProfile(db:Transaction,profileId:string){const q=await db.
 export async function profileTask(identity:Identity,task:keyof typeof profileSchemas,input:unknown){
   const args=profileSchemas[task].parse(input) as any;
   return transaction(identity,async db=>{
+    if(task==='profile_control'&&args.action==='delete'){
+      const prior=await priorOperation(db,identity,args.operationId,task,args);if(prior)return prior;
+    }
     if(task==='profile_list')return {items:(await db.query('select * from um.profiles order by id limit $1 offset $2',[args.limit,args.offset])).rows.map(profile),offset:args.offset,limit:args.limit};
     if(task==='profile_get')return requireProfile(db,args.profileId);
     if(task==='profile_export'){

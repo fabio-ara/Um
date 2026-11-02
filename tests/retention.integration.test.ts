@@ -1,0 +1,34 @@
+import {test,after} from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID as uuid} from 'node:crypto';
+import {access,rename,mkdir,rmdir,readFile} from 'node:fs/promises';
+import {resolve} from 'node:path';
+import {localContext} from './local-context.ts';
+import {execute} from '../src/service.ts';
+import {transaction} from '../src/db.ts';
+import {putFile,getFile,deleteQueuedFile} from '../src/files.ts';
+import {fileRow} from '../src/sources.ts';
+const ctx=await localContext();after(ctx.close);
+test('exclusão pessoal nega acesso imediatamente e retoma remoção física sem apagar arquivo comum',async()=>{
+ const author=await ctx.account(),holder=await ctx.account(),stranger=await ctx.account();
+ const call=(actor:any,name:any,args:any)=>execute(name,args,actor) as Promise<any>;
+ const profileId=(await call(author,'profile_create',{operationId:uuid(),fields:{name:'Retenção sintética'}})).result.profileId;
+ const invitation=await call(author,'invite_create',{operationId:uuid(),profileId});await call(holder,'invite_accept',{operationId:uuid(),token:invitation.result.token});
+ const projectId=(await call(author,'project_create',{operationId:uuid(),title:'Retenção',metadata:{object:{kind:'theme',workIds:[],subject:'Fixture'},scope:'Fixture própria',language:'pt',audience:'Sintético',configuration:{editorial:{},instructional:{}}}})).result.projectId;
+ await call(author,'participation_add',{operationId:uuid(),projectId,profileId});
+ const personal=await putFile(author,Buffer.from('Derivado pessoal sintético'),'text/plain'),common=await putFile(author,Buffer.from('Material comum preservado'),'text/plain');
+ await transaction(author,async db=>{await fileRow(db,author,personal,{projectId,profileId},true);await fileRow(db,author,common,{projectId},true);});
+ await assert.rejects(transaction(author,db=>db.query('insert into um.files(path,owner_id,sha256,bytes,media_type,offline_allowed,state) values($1,$2,$3,1,$4,true,$5)',[`${stranger.id}/${uuid()}`,author.id,'fake','text/plain','prepared'])),(e:any)=>e.code==='23514');
+ assert.match((await getFile(holder,personal.path)).toString(),/Derivado/);
+ const deletion={operationId:uuid(),profileId,action:'delete'},deleted=await call(holder,'profile_control',deletion);
+ assert.deepEqual(await call(holder,'profile_control',deletion),deleted);
+ assert.equal((await call(holder,'operation_get',{operationId:deletion.operationId})).result.action,'delete');
+ await assert.rejects(getFile(holder,personal.path),/indisponível/);await assert.rejects(getFile(author,personal.path),/indisponível/);
+ const path=resolve('.local/blobs',personal.path),backup=path+'.retention-proof';await access(path);
+ assert.equal((await call(holder,'data_status',{})).pending,1);assert.equal((await call(author,'data_status',{})).pending,0);await assert.rejects(deleteQueuedFile(stranger,personal.path),/indisponível/);
+ await rename(path,backup);await mkdir(path);
+ try{const failed=await call(holder,'data_cleanup',{operationId:uuid()});assert.equal(failed.result.pending,1);assert.equal(failed.result.removed,0);}finally{await rmdir(path);await rename(backup,path);}
+ const args={operationId:uuid()},cleaned=await call(holder,'data_cleanup',args);assert.equal(cleaned.result.removed,1);assert.equal(cleaned.result.pending,0);assert.deepEqual(await call(holder,'data_cleanup',args),cleaned);
+ await assert.rejects(access(path),(e:any)=>e.code==='ENOENT');assert.equal((await readFile(resolve('.local/blobs',common.path))).toString(),'Material comum preservado');
+ assert.equal((await call(holder,'data_cleanup',{operationId:uuid()})).result.removed,0);
+});
