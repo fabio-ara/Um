@@ -13,7 +13,7 @@ export async function authenticate(header: string | undefined, mcp = false): Pro
     const {payload} = await jwtVerify(token, jwks, {issuer: config.issuer, audience: 'authenticated', algorithms: ['ES256', 'RS256']});
     ensure(z.uuid().safeParse(payload.sub).success && z.uuid().safeParse(payload.session_id).success && payload.role === 'authenticated', 'UNAUTHENTICATED', 'Sessão inválida.', 401);
     if (mcp) ensure(z.uuid().safeParse(payload.client_id).success, 'FORBIDDEN', 'Autorize um cliente OAuth para o Um.', 403);
-    return {id: payload.sub!, sessionId: String(payload.session_id), clientId: payload.client_id ? String(payload.client_id) : undefined, permission: 'write'};
+    return {id: payload.sub!, sessionId: String(payload.session_id), clientId: payload.client_id ? String(payload.client_id) : undefined, permission: 'write',accessToken:token};
   } catch (error) {
     if (error instanceof AppError) throw error;
     throw new AppError('UNAUTHENTICATED', 'Sessão inválida ou expirada.', 401);

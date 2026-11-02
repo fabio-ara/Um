@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const id = z.uuid();
 export const revision = z.number().int().positive();
 export const label = z.string().trim().min(1).max(500);
-export type Identity = { id: string; sessionId: string; clientId?: string; permission: 'read' | 'write' };
+export type Identity = { id: string; sessionId: string; clientId?: string; permission: 'read' | 'write'; accessToken?: string };
 export type Provenance = { kind: 'source' | 'translation' | 'interpretation' | 'controversy' | 'example' | 'reflection'; references: string[]; limitations: string[] };
 export type Profile = { id: string; creatorId: string; holderId: string | null; creatorAccess: boolean; visibility: 'private' | 'public'; fields: Record<string, string>; revision: number };
 export type SourceBlock = { id: string; kind: 'heading' | 'paragraph' | 'quote' | 'verse' | 'list' | 'table' | 'figure' | 'code' | 'equation' | 'note' | 'unknown' | 'navigation'; text: string; locator?: string; meta: Record<string, unknown> };
