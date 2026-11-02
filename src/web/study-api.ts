@@ -6,7 +6,7 @@ import {effectiveAnswers,validateSubmission} from '../forms.ts';
 import type {QueuedOperation,Receipt,Choice} from '../contracts.ts';
 import type {PublishedManifest} from '../publication.ts';
 import type {StudyApi} from './dom.ts';
-const writable=new Set(['form_draft','form_submit','reader_state_save','reader_rebase','note_save','term_save','record_delete','attempt_submit','time_record','comment_add','comment_edit','comment_remove','note_share','observation_add']);
+const writable=new Set(['form_draft','form_submit','reader_state_save','note_save','term_save','record_delete','attempt_submit','time_record','comment_add','comment_edit','comment_remove','note_share','observation_add']);
 const preparedReads=new Set(['bundle_get','source_get','source_locate','content_get','choice_sequence']);
 const stable=(v:any):string=>JSON.stringify(v,(_k,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x);
 const isAuth=(e:unknown)=>e instanceof AppError&&(e.status===401||e.status===403);
@@ -241,17 +241,26 @@ export async function studyClient(accountId:string,profileId:string,projectId?:s
   }
   const result=await packaged(task,args);await active();return result;
  };
- async function download(){await active();if(!projectId)throw Error('Estudo não selecionado.');try{await sync();const common=await remote('bundle_get',{projectId,profileId:null}) as PublishedManifest,manifests=[common];try{manifests.push(await remote('bundle_get',{projectId,profileId}) as PublishedManifest);}catch(e){if(!(e instanceof AppError&&e.status===404))throw e;}await store.installStudy(manifests,file=>fetchFile(file.path));await active();return {downloaded:common.files.some(f=>f.offlineAllowed)};}catch(e){if(isAuth(e))await clearStore();throw e;}}
- let updateOperationId:string|null=null;
+ async function download(confirm?:(common:PublishedManifest)=>Promise<void>){await active();if(!projectId)throw Error('Estudo não selecionado.');try{await sync();const common=await remote('bundle_get',{projectId,profileId:null}) as PublishedManifest,manifests=[common];try{manifests.push(await remote('bundle_get',{projectId,profileId}) as PublishedManifest);}catch(e){if(!(e instanceof AppError&&e.status===404))throw e;}await store.installStudy(manifests,file=>fetchFile(file.path),confirm?()=>confirm(common):undefined);await active();return {downloaded:common.files.some(f=>f.offlineAllowed),baseRevision:common.revision};}catch(e){if(isAuth(e))await clearStore();throw e;}}
  async function update(){
   await active();if(!navigator.onLine)throw new AppError('OFFLINE','Conecte-se para conferir a nova revisão.',503);
   await sync();
   if((await store.operations()).some(o=>o.state!=='confirmed'))throw new AppError('PENDING','Resolva as operações pendentes antes de atualizar o estudo.',409);
-  await download();
-  updateOperationId??=crypto.randomUUID();
-  const receipt=await api('reader_rebase',{projectId,profileId,operationId:updateOperationId});
-  if(receipt.status!=='confirmed')throw new AppError('UNCERTAIN','Atualização ainda sem confirmação. Retome quando houver conexão.',503);
-  updateOperationId=null;return receipt.result;
+  const key='update:'+projectId;let intent=await store.record(key) as Record<string,any>|null;
+  async function confirm(saved:Record<string,any>){
+   const prior=await remote('operation_get',{operationId:saved.operationId});
+   const receipt=prior||await remote('reader_rebase',saved);
+   if(receipt.status!=='confirmed'||receipt.result.baseRevision!==saved.expectedBaseRevision)throw new AppError('UNCERTAIN','Atualização sem confirmação da revisão alvo.',503);
+   return receipt.result;
+  }
+  // Recover the previous exact intent before considering a newer publication.
+  if(intent)try{await confirm(intent);}catch(e){if(e instanceof AppError&&e.code==='STALE_BASE'){await store.putRecord(key,null);intent=null;}else throw e;}
+  let result:any;
+  await download(async common=>{
+   if(!intent||intent.expectedBaseRevision!==common.revision)intent={operationId:crypto.randomUUID(),projectId,profileId,expectedBaseRevision:common.revision};
+   await store.putRecord(key,intent);result=await confirm(intent);
+  });
+  await store.putRecord(key,null);return result;
  }
  return {api,store,sync,download,update,close:()=>{closed=true;store.close();}};
 }

@@ -43,7 +43,7 @@ async function ownedProject(db:Transaction,identity:Identity,projectId:string,lo
 }
 async function knownUnit(db:Transaction,projectId:string,unitId:string){
  const found=await db.query("select 1 from um.bundles b where project_id=$1 and profile_id is null and exists(select 1 from jsonb_array_elements(b.manifest->'index') i where i->>'kind'='unit' and i->>'id'=$2) union all select 1 from um.authoring_items i join um.authoring_drafts d on d.id=i.draft_id where d.project_id=$1 and d.profile_id is null and i.kind='unit' and i.id=$2::uuid limit 1",[projectId,unitId]);
- ensure(found.rowCount,'NOT_FOUND','Salve a unidade na preparação antes de fixar parâmetros para ela.',404);
+ ensure(found.rowCount,'NOT_FOUND','Salve a unidade na preparação da base comum antes de fixar parâmetros para ela.',404);
 }
 export async function parameterTask(identity:Identity,task:keyof typeof parameterSchemas,input:unknown){
  const a=parameterSchemas[task].parse(input) as any;

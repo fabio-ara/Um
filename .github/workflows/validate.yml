@@ -1,0 +1,72 @@
+name: Validate Um
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts-and-web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - name: Deterministic domain and HTTP boundary
+        shell: bash
+        run: |
+          tests=()
+          for file in tests/*.test.ts; do
+            [[ "$file" == *.integration.test.ts ]] || tests+=("$file")
+          done
+          npx tsx --test "${tests[@]}"
+      - run: npm run build
+      - name: Check tracked source hygiene
+        shell: bash
+        run: |
+          git diff --exit-code
+          if git ls-files | grep -Ei '(^|/)(Um_private|\.env|\.local)(/|$)|\.(jks|keystore|apk|aab)$'; then
+            echo 'Private execution data or binary release must not enter source control.'
+            exit 1
+          fi
+
+  android-debug:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - run: npm ci
+      - name: Compile the isolated debug application
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:assembleDebug
+
+# This workflow has no deployment, Pages, production secret, signing key or
+# release permission. Hosted and signed delivery are separate candidate gates.

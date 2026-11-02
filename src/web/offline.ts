@@ -43,7 +43,7 @@ interface StoredHead {
 
 export interface OfflineStore {
   install(manifest: Manifest, fetchFile: (file: FileEntry) => Promise<Uint8Array>): Promise<void>;
-  installStudy(manifests:Manifest[],fetchFile:(file:FileEntry)=>Promise<Uint8Array>):Promise<void>;
+  installStudy(manifests:Manifest[],fetchFile:(file:FileEntry)=>Promise<Uint8Array>,beforeCommit?:()=>Promise<void>):Promise<void>;
   package(projectId: string, personal: boolean): Promise<{ manifest: Manifest; files: Record<string, Uint8Array> } | null>;
   enqueue(operation: QueuedOperation, records?: Record<string,unknown>): Promise<void>;
   operations(): Promise<QueuedOperation[]>;
@@ -389,11 +389,12 @@ class OfflineStoreImpl implements OfflineStore {
     await this.transaction(['packages','heads'],'readwrite',tx=>{tx.objectStore('packages').put(prepared.pkg);tx.objectStore('heads').put(prepared.head);});
   };
 
-  installStudy = async (manifests:Manifest[],fetchFile:(file:FileEntry)=>Promise<Uint8Array>):Promise<void> => {
+  installStudy = async (manifests:Manifest[],fetchFile:(file:FileEntry)=>Promise<Uint8Array>,beforeCommit?:()=>Promise<void>):Promise<void> => {
     const common=manifests.find(m=>m.profileId===null),personal=manifests.find(m=>m.profileId!==null);
     if(!common||manifests.length>2||manifests.filter(m=>m.profileId===null).length!==1||personal&&((personal as Manifest&{baseRevision:number}).baseRevision!==common.revision||personal.projectId!==common.projectId))fail('STALE_BASE','Os apoios ainda não correspondem à base atual.',409);
     const prepared:{pkg:StoredPackage;head:StoredHead}[]=[];
     for(const manifest of manifests)prepared.push(await this.prepare(manifest,fetchFile));
+    await beforeCommit?.();this.assertOpen();
     // No head is changed until every permitted byte in both packages verifies.
     await this.transaction(['packages','heads'],'readwrite',tx=>{
       for(const {pkg,head}of prepared){tx.objectStore('packages').put(pkg);tx.objectStore('heads').put(head);}

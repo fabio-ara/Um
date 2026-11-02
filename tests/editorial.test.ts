@@ -33,7 +33,7 @@ function makeChoice(overrides: Partial<Choice> = {}): Choice {
     correctOptionId: 'a',
     coverageTargets: ['coverage-1'],
     sources: [anchor],
-  };
+  appliedConfiguration:{editorial:{purpose:'Fixture sintética'},instructional:{purpose:'Verificar o contrato'}}};
   return { ...base, ...overrides };
 }
 
@@ -61,7 +61,7 @@ function makeUnit(overrides: Partial<StudyUnit> = {}): StudyUnit {
     knowledgeTargets: ['target-1'],
     provenance: [],
     ...overrides,
-  };
+  appliedConfiguration:{editorial:{purpose:'Fixture sintética'},instructional:{purpose:'Verificar o contrato'}}};
 }
 
 function makeCoverage(overrides: Partial<Coverage> = {}): Coverage {
@@ -87,7 +87,7 @@ function makeResource(overrides: Partial<Resource> = {}): Resource {
     targets: [anchor],
     body: 'Texto',
     sources: [anchor],
-    appliedConfiguration: {},
+    appliedConfiguration: {editorial:{language:'pt'},instructional:{}},
     inspection: 'ai_inspected',
     ...overrides,
   };

@@ -5,8 +5,10 @@ Pages ou APK deste programa foi promovido. As issues #1–#9 permanecem abertas.
 
 O checkout inicial continha somente LICENSE. O domínio de identidade, fontes,
 formulário, publicação, prática e acervo já tem implementação e provas focais locais.
-O leitor está em integração e inspeção visual; o núcleo IndexedDB foi exercitado
-em Chrome. Isso não certifica host ChatGPT, Storage hospedado ou Android release.
+O leitor tem provas Chrome de seleção Unicode, comparação, formulários, prática,
+notas, atualização concorrente e continuidade após reinício. O núcleo IndexedDB
+foi exercitado com falhas e respostas perdidas. Isso não certifica host ChatGPT,
+Storage hospedado ou Android release.
 Não há candidata de promoção nem aceites finais certificados.
 
 O OAuth próprio do MCP passou nas provas locais de PKCE, recurso, permissões,
@@ -21,3 +23,16 @@ restaurado preservou contagens e hashes das 76 tabelas e 21.784 registros anteri
 além das funções, políticas, permissões e restrições dos outros produtos.
 Nenhuma escrita foi feita no backend compartilhado; as provas hospedadas permanecem
 pendentes, assim como a revisão editorial final e a candidata dos canais de entrega.
+
+Na revisão mais recente, a atualização passou a fixar a revisão alvo e confirmar
+seu recibo antes de ativar os pacotes locais. Novas gravações declaram a configuração
+editorial e instrucional aplicada. A validação integrada local passou em 72 testes,
+sem skips, incluindo Storage real e a demonstração. Tipos, build web e compilação
+Android debug passaram. A matriz visual foi exercitada em 320/390/480 px e desktop,
+claro/escuro; dicas icon-only funcionam por teclado e toque longo.
+
+Ainda faltam a revisão editorial independente final, leitor de tela/ampliação
+comprovados e provas hospedadas/assinadas. Não há promoção autorizada pelos gates
+enquanto essas condições estiverem pendentes. CI valida o trabalho; o workflow de
+Pages só pode ser disparado manualmente para a candidata já revisada e integrada.
+Consulte [validação e entrega](docs/validacao-entrega.md) para os limites e comandos.

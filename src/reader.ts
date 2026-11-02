@@ -22,7 +22,7 @@ export const readerSchemas={
  time_record:z.strictObject({...write,unitId:id,seconds:z.number().int().min(0).max(3600),mode:z.enum(['reading','practice','exploration']).default('reading'),event:z.enum(['open','interval','pause','resume','unit_change','close']).default('interval')}),
  attempt_submit:z.strictObject({...write,bundleRevision:revision,questionId:id,questionRevision:revision,optionId:z.string().min(1).max(100),sequenceId:id,createdAt:z.iso.datetime()}),
  choice_sequence:z.strictObject({...scope,errorsOnly:z.boolean(),unitId:id.optional()}),
- reader_rebase:z.strictObject(write),
+ reader_rebase:z.strictObject({...write,expectedBaseRevision:revision}),
  comment_list:z.strictObject({projectId:id,...page}),
  comment_add:z.strictObject({operationId:id,projectId:id,profileId:id.optional(),commentId:id,target:anchorSchema,text:z.string().min(1).max(20000),replyTo:id.nullable().default(null)}),
  comment_edit:z.strictObject({operationId:id,projectId:id,commentId:id,expectedRevision:revision,text:z.string().min(1).max(20000)}),
@@ -53,9 +53,11 @@ export async function readerTask(identity:Identity,task:keyof typeof readerSchem
  if(a.anchor||a.target){const anchor=a.anchor||a.target;const source=await sourceView(identity,anchor.sourceId,anchor.sourceRevision);validateAnchor(anchor,source);const related=await transaction(identity,async db=>(await db.query('select 1 from um.project_sources where project_id=$1 and source_id=$2',[a.projectId,anchor.sourceId])).rowCount);ensure(related,'SOURCE_REQUIRED','A passagem não pertence ao estudo.');}
  if(task==='reader_state_save'){ensure(a.state.profileId===a.profileId&&a.state.projectId===a.projectId,'VALIDATION','Estado pertence a outro estudo.');ensure(a.state.tabs.some((t:any)=>t.id===a.state.activeTabId),'VALIDATION','Aba ativa inexistente.');ensure(new Set(a.state.tabs.map((t:any)=>t.id)).size===a.state.tabs.length,'VALIDATION','Abas duplicadas.');}
  if(task==='reader_rebase'){
-  const manifest=await published(identity,a.projectId,null),sourceMap=new Map<string,Awaited<ReturnType<typeof sourceView>>>();
+  const manifest=await published(identity,a.projectId,null,a.expectedBaseRevision),sourceMap=new Map<string,Awaited<ReturnType<typeof sourceView>>>();
   for(const [sourceId,v]of Object.entries(manifest.sourceRevisions))sourceMap.set(sourceId,await sourceView(identity,sourceId,v));
   return transaction(identity,db=>operation(db,identity,a.operationId,task,a,async()=>{
+   const current=(await db.query('select active_revision from um.projects where id=$1 for update',[a.projectId])).rows[0];
+   ensure(current?.active_revision===a.expectedBaseRevision,'STALE_BASE','A publicação mudou durante a atualização. Retome para conferir a nova revisão.',409);
    const records=(await db.query("select * from um.reader_records where project_id=$1 and profile_id=$2 and kind in ('note','term','state') for update",[a.projectId,a.profileId])).rows;let review=0;
    function updateAnchor(anchor:any){if(!anchor)return {anchor,status:'verified'};const source=sourceMap.get(anchor.sourceId);if(!source){review++;return {anchor,status:'needs_review'};}const result=reanchor(anchor,source);if(result.status==='needs_review'){review++;return {anchor:result.previous,status:result.status};}return result;}
    for(const r of records){const data=structuredClone(r.data);

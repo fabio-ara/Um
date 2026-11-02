@@ -11,8 +11,11 @@ val stageWeb by tasks.registering(Exec::class) {
  workingDir(webRoot)
  commandLine("node","scripts/stage-android.mjs",assetsRoot.get().asFile.absolutePath,if(releaseRequested)"release" else "debug")
  inputs.dir(File(webRoot,"src"));inputs.dir(File(webRoot,"public"));inputs.file(File(webRoot,"vite.config.ts"));inputs.file(File(webRoot,"index.html"))
+ inputs.file(File(webRoot,"scripts/stage-android.mjs"));inputs.file(File(webRoot,"package.json"));inputs.file(File(webRoot,"package-lock.json"))
  inputs.property("api",System.getenv("VITE_API_ORIGIN").orEmpty());inputs.property("release",releaseRequested)
  outputs.dir(assetsRoot)
+ // A cached task must never skip the clean-candidate and HTTPS release guards.
+ outputs.upToDateWhen { !releaseRequested }
 }
 android {
  namespace="com.fabioara.um";compileSdk=36

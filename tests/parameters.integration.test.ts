@@ -2,19 +2,27 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID as uuid} from 'node:crypto';
 import {localContext} from './local-context.ts';
-import {sourceGuardFixture} from './source-guard-fixture.ts';
+import {personalStudyFixture} from './personal-study-fixture.ts';
 import {execute} from '../src/service.ts';
 import {transaction} from '../src/db.ts';
 
 test('parâmetros por alcance preservam intenção, requisitos, isolamento e revisão aplicada',async()=>{
- const ctx=await localContext(),owner=await ctx.account(),outsider=await ctx.account(),f=await sourceGuardFixture(owner);
+ const ctx=await localContext(),owner=await ctx.account(),outsider=await ctx.account();
  try{
+  const f=await personalStudyFixture(owner);
   const initial=await f.call('bundle_get',{projectId:f.projectId,profileId:null});
+  const omitted=structuredClone(f.bundle) as any;omitted.revision=2;omitted.baseRevision=2;delete omitted.units[0].appliedConfiguration;
+  await assert.rejects(()=>f.call('bundle_publish',{operationId:uuid(),expectedRevision:1,bundle:omitted}),(e:any)=>e.code==='VALIDATION');
+  const dangling=structuredClone(f.personal);dangling.revision=2;dangling.choices[0].unitId=uuid();
+  await assert.rejects(()=>f.call('bundle_publish',{operationId:uuid(),expectedRevision:1,bundle:dangling,reasons:f.reasons}),(e:any)=>e.code==='BUNDLE_CHOICE_UNIT');
+  const personalUnits={...f.personal,revision:2,units:f.bundle.units};
+  await assert.rejects(()=>f.call('bundle_publish',{operationId:uuid(),expectedRevision:1,bundle:personalUnits,reasons:f.reasons}),(e:any)=>e.code==='BUNDLE_PERSONAL');
   const draftId=(await f.call('authoring_create',{operationId:uuid(),projectId:f.projectId,profileId:null,expectedRevision:1,baseRevision:2,nextStep:'Preparar revisão'})).result.draftId;
-  await f.call('authoring_save',{operationId:uuid(),draftId,expectedRevision:1,nextStep:'Publicar após conferência',inspection:f.bundle.inspection});
+  await f.call('authoring_save',{operationId:uuid(),draftId,expectedRevision:1,nextStep:'Publicar após conferência',items:[{kind:'unit',position:0,body:f.bundle.units[0]},{kind:'coverage',position:0,body:f.bundle.coverage[0]}],inspection:f.bundle.inspection});
   const account={operationId:uuid(),scope:'account',expectedRevision:0,configuration:{editorial:{language:'pt',order:'obra'},instructional:{examples:'concretos'}},requirements:['Distinguir fonte e interpretação'],intention:'Use exemplos menos abstratos e mantenha a ordem da obra.'};
   const receipt=await f.call('parameter_save',account);assert.deepEqual(await f.call('parameter_save',account),receipt);
   const invalidated=(await f.call('authoring_get',{draftId})).draft;assert.equal(invalidated.inspection.completed,false);assert.equal(invalidated.revision,3);
+  await assert.rejects(()=>f.call('authoring_publish',{operationId:uuid(),draftId,expectedRevision:3}),(e:any)=>e.code==='BUNDLE_INSPECTION');
   await assert.rejects(()=>f.call('parameter_save',{...account,operationId:uuid()}),(e:any)=>e.code==='CONFLICT');
   const project=(await f.call('project_get',{projectId:f.projectId})).project;
   await assert.rejects(()=>f.call('project_update',{operationId:uuid(),projectId:f.projectId,expectedRevision:project.revision,metadata:{configuration:{editorial:{language:'en'},instructional:{}}}}),(e:any)=>e.code==='VALIDATION');

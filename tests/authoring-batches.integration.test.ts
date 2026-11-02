@@ -15,7 +15,7 @@ test('lotes persistidos: retomada, conflito, inspeção, publicação atômica e
  await call('source_attach',{operationId:uuid(),projectId,sourceId});const source=await sourceView(author,sourceId);
  const anchor={sourceId,sourceRevision:1,elementId:source.blocks[0].id,start:0,end:8,exact:'Conferir',prefix:'',suffix:''};
  const unitId=uuid(),coverageId=uuid(),provenance={kind:'source',references:['Fixture'],limitations:[]};
- const unit={id:unitId,title:'Razões',body:'Conteúdo integral. '.repeat(3000).trim(),references:[{id:uuid(),from:[anchor],to:[anchor],relation:'supports',provenance}],knowledgeTargets:[coverageId],provenance:[provenance]};
+ const unit={id:unitId,title:'Razões',body:'Conteúdo integral. '.repeat(3000).trim(),references:[{id:uuid(),from:[anchor],to:[anchor],relation:'supports',provenance}],knowledgeTargets:[coverageId],provenance:[provenance],appliedConfiguration:{editorial:{purpose:'Fixture sintética'},instructional:{purpose:'Verificar o contrato'}}};
  const coverage={id:coverageId,description:'Distinguir evidência',unitIds:[unitId],sourceAnchors:[anchor],practiceIds:[]};
  const inspection={kind:'ai',references:['Inspeção sintética explícita'],findings:[],completed:true};
  const create={operationId:uuid(),projectId,profileId:null,expectedRevision:0,baseRevision:1,nextStep:'Preparar unidade e cobertura'};
@@ -55,7 +55,7 @@ test('lotes persistidos: retomada, conflito, inspeção, publicação atômica e
  const formId=uuid();await call('form_save',{operationId:uuid(),expectedRevision:0,definition:{id:formId,revision:1,projectId,profileId,questions:[{id:'support',type:'single_choice',prompt:'Apoio?',required:true,options:[{id:'example',label:'Exemplo'},{id:'none',label:'Sem preferência'}]}],purposeByQuestion:{support:'Escolher representação'},planningReference:'Fixture',maxQuestions:6}});
  await call('form_publish',{operationId:uuid(),formId,expectedRevision:1});await call('form_submit',{operationId:uuid(),formId,formRevision:1,answers:{support:'example'}},student);
  const personal=(await call('authoring_create',{...create,operationId:uuid(),profileId})).result.draftId;
- const resource={id:uuid(),projectId,profileId,baseRevision:1,type:'analogy',title:'Preparação privada',purpose:'Apoio sintético',targets:[anchor],body:'Exemplo pessoal ainda em preparação.',sources:[anchor],appliedConfiguration:{},inspection:'pending'};
+ const resource={id:uuid(),projectId,profileId,baseRevision:1,type:'analogy',title:'Preparação privada',purpose:'Apoio sintético',targets:[anchor],body:'Exemplo pessoal ainda em preparação.',sources:[anchor],appliedConfiguration:{editorial:{language:'pt'},instructional:{}},inspection:'pending'};
  await call('authoring_save',{operationId:uuid(),draftId:personal,expectedRevision:1,nextStep:'Preparar prática',items:[{kind:'resource',position:0,body:resource}]});
  const item=(await call('authoring_items',{draftId:personal,expectedRevision:2})).items[0];
  assert.equal(JSON.parse((await getFile(author,item.file_path)).toString()).body,resource.body);

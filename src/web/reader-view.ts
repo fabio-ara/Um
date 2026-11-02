@@ -501,11 +501,12 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
     if (!units.length) throw new Error('O pacote não contém unidade de estudo.');
 
     const restored = await loadState();
+    const currentAnchor=(anchor:Anchor|null)=>!anchor||sourceIndex.some(s=>s.id===anchor.sourceId&&s.revision===anchor.sourceRevision);
     if (restored) {
       stateRecordId = restored.id;
       stateRevision = restored.revision;
       const data = restored.data;
-      const restoredTabs = validTabs(data?.tabs);
+      const restoredTabs = validTabs(data?.tabs).map(tab=>!currentAnchor(tab.anchor)||!currentAnchor(tab.origin)?{...tab,anchorStatus:'needs_review' as const}:tab);
       if (restoredTabs.length) {
         tabs = restoredTabs;
         activeTabId = restoredTabs.some(t => t.id === data?.activeTabId) ? data.activeTabId : restoredTabs[0].id;
@@ -535,8 +536,9 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
     if (!tabs.some(t => t.id === activeTabId)) activeTabId = unitTabId;
 
     const [loadedNotes, loadedTerms] = await Promise.all([loadRecords('note'), loadRecords('term'), loadComments(), loadObservations()]);
-    notes = loadedNotes;
-    terms = loadedTerms;
+    const markRevision=(item:RecordItem)=>currentAnchor(targetOf(dataOf(item).anchor))?item:{...item,data:{...dataOf(item),anchorStatus:'needs_review'}};
+    notes = loadedNotes.map(markRevision);
+    terms = loadedTerms.map(markRevision);
     timeRecords=(await loadRecords('time')).map(r=>r.data);
     booted = true;
     void loadAllResources();

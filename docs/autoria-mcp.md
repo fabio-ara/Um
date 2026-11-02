@@ -48,3 +48,8 @@ parâmetros não regenera estudos publicados.
 Alterações de parâmetros invalidam a inspeção das preparações abertas afetadas,
 inclusive quando mudam apenas requisitos. `project_update` também exige a intenção
 ao modificar configuração ou requisitos; não permite contornar essa regra.
+
+Os dois grupos de `appliedConfiguration` são obrigatórios nas novas gravações,
+inclusive sem escolhas fixadas. Arquivos históricos continuam legíveis; uma nova
+revisão declara suas decisões efetivamente aplicadas. Unidades pertencem à base
+comum; complementos pessoais oferecem recursos e escolhas vinculados a elas.
