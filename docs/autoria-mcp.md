@@ -22,3 +22,29 @@ Se outra publicação mudar a base durante a preparação, `authoring_rebase` re
 Permissões de arquivo vigentes também limitam a entrega de revisões antigas. Ao reconectar, o aplicativo confere as revisões instaladas e retira pacotes cuja permissão offline terminou, conservando notas, rascunhos de formulário e operações pendentes. Textos consultados online só ficam disponíveis offline quando integram um pacote permitido preparado explicitamente. Uma cópia exportada para fora do aplicativo não pode ser recolhida pelo serviço.
 
 Essas tarefas fazem parte do catálogo MCP e não oferecem SQL arbitrário. A prova local por API/SDK não certifica anexo nem consentimento no host ChatGPT Web.
+# Parâmetros por alcance
+
+`parameter_get` lê escolhas e intenções de conta, projeto ou unidade. `parameter_save`
+grava somente uma alteração pedida, com `operationId` e `expectedRevision`; uma
+consulta ou proposta não escreve. Projeto usa a mesma configuração canônica de
+`project_get`/`project_update`. Unidade precisa existir em uma preparação salva ou
+publicação. Somente o autor administra esses parâmetros; não há painel pedagógico
+no aplicativo de estudo.
+
+As chaves de `configuration.editorial` e `configuration.instructional` presentes
+são escolhas fixadas. Chaves ausentes permitem decisão automática. A resolução
+aplica conta, projeto e unidade nessa ordem, informa cada substituição em
+`overrides` e acumula `requirements` sem uma regra local apagar exigências herdadas.
+Para voltar a uma escolha herdada, remova a chave do alcance local com nova revisão.
+`intention` conserva o pedido que motivou a alteração.
+
+Unidades, recursos e escolhas registram `appliedConfiguration` com os dois grupos
+efetivamente usados, incluindo decisões automáticas. Recursos locais informam
+`unitId`. A publicação rejeita divergência nas escolhas fixadas, conserva o retrato
+dos requisitos no manifesto e mantém versões anteriores. Intenções privadas de
+conta não são copiadas para o manifesto comum. O servidor verifica estrutura e
+coerência; a inspeção editorial verifica se o texto cumpre os requisitos. Alterar
+parâmetros não regenera estudos publicados.
+Alterações de parâmetros invalidam a inspeção das preparações abertas afetadas,
+inclusive quando mudam apenas requisitos. `project_update` também exige a intenção
+ao modificar configuração ou requisitos; não permite contornar essa regra.

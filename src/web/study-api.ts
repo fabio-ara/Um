@@ -6,8 +6,8 @@ import {effectiveAnswers,validateSubmission} from '../forms.ts';
 import type {QueuedOperation,Receipt,Choice} from '../contracts.ts';
 import type {PublishedManifest} from '../publication.ts';
 import type {StudyApi} from './dom.ts';
-const writable=new Set(['form_draft','form_submit','reader_state_save','note_save','term_save','record_delete','attempt_submit','time_record','comment_add','comment_edit','comment_remove','note_share','observation_add']);
-const preparedReads=new Set(['source_get','source_locate','content_get','choice_sequence']);
+const writable=new Set(['form_draft','form_submit','reader_state_save','reader_rebase','note_save','term_save','record_delete','attempt_submit','time_record','comment_add','comment_edit','comment_remove','note_share','observation_add']);
+const preparedReads=new Set(['bundle_get','source_get','source_locate','content_get','choice_sequence']);
 const stable=(v:any):string=>JSON.stringify(v,(_k,x)=>x&&typeof x==='object'&&!Array.isArray(x)?Object.fromEntries(Object.entries(x).sort(([a],[b])=>a.localeCompare(b))):x);
 const isAuth=(e:unknown)=>e instanceof AppError&&(e.status===401||e.status===403);
 const saveKind:Record<string,string>={reader_state_save:'state',note_save:'note',term_save:'term',attempt_submit:'attempt',time_record:'time'};
@@ -67,36 +67,43 @@ export async function studyClient(accountId:string,profileId:string,projectId?:s
   if(task==='record_delete')for(const kind of ['note','term']){const records=await store.record(recordKey(kind)) as any;if(records){records.items=recordItems(records).filter((r:any)=>r.id!==a.recordId);updates[recordKey(kind)]=records;}}
   return result;
  }
- async function mergeReaderRecords(a:any,result:any){
+ const recordScans=new Map<string,{next:number;seen:Set<string>}>();
+ async function mergeReaderRecords(a:any,result:any,confirmedAtStart:Set<string>){
   const kind=String(a.kind),offset=Number(result?.offset??a.offset??0)||0,limit=Number(result?.limit??a.limit??30)||30;
   const cached=await store.record(recordKey(kind)) as any,map=new Map<string,ReaderRecord>();
   for(const item of recordItems(cached))if(item?.id)map.set(item.id,item);
   const ops=await store.operations(),latest=new Map<string,QueuedOperation>();
+  const remoteItems=recordItems(result),pageIds=new Set(remoteItems.map(r=>r.id));
+  let scan=recordScans.get(kind);if(offset===0){scan={next:0,seen:new Set()};recordScans.set(kind,scan);}
+  const terminal=remoteItems.length<limit;
+  if(scan?.next===offset){for(const item of remoteItems)scan.seen.add(item.id);scan.next=offset+remoteItems.length;}
+  else {recordScans.delete(kind);scan=undefined;}
+  for(const item of remoteItems)if(item?.id)map.set(item.id,item);
   // Replay projections in queue order so the newest intent wins and no local
   // record can be silently dropped by a remote page.
   for(const op of ops){
-   if(!affectsKind(op,kind)||op.arguments.projectId!==(a.projectId||projectId))continue;
+   if(!affectsKind(op,kind)||op.arguments.projectId!==(a.projectId||projectId)||confirmedAtStart.has(op.id))continue;
    const recordId=recordIdOf(op);if(!recordId)continue;
    latest.set(recordId,op);
    if(op.task==='record_delete')map.delete(recordId);
    else{const projection=projectionFor(op,kind);if(projection)map.set(projection.id,projection);}
   }
-  const protectedIds=new Set([...latest].filter(([,op])=>op.state!=='confirmed').map(([recordId])=>recordId));
-  for(const item of recordItems(result)){
-   if(!item?.id||protectedIds.has(item.id))continue;
-   map.set(item.id,item);
-  }
+  const protectedIds=new Set(latest.keys());
   // A complete remote collection also proves deletion; a partial page does not.
-  if(offset===0&&recordItems(result).length<limit){const visible=new Set(recordItems(result).map(item=>item.id));for(const key of map.keys())if(!visible.has(key)&&!protectedIds.has(key))map.delete(key);}
+  if(terminal&&scan){for(const key of map.keys())if(!scan.seen.has(key)&&!protectedIds.has(key))map.delete(key);recordScans.delete(kind);}
   const merged=[...map.values()].sort((x,y)=>x.id.localeCompare(y.id));
   await store.putRecord(recordKey(kind),{items:merged});
-  return {...(result&&typeof result==='object'?result:{}),items:merged.slice(offset,offset+limit),offset,limit};
+  // Offsets belong to the server collection, never to the local merged cache.
+  // Local-only intentions join the terminal page without shifting remote rows.
+  return {...(result&&typeof result==='object'?result:{}),items:merged.filter(r=>pageIds.has(r.id)||terminal&&protectedIds.has(r.id)&&!scan?.seen.has(r.id)),offset,limit,nextOffset:terminal?null:offset+remoteItems.length};
  }
- async function mergeFormGet(a:any,result:any){
+ async function mergeFormGet(a:any,result:any,confirmedAtStart:Set<string>){
   const key=cacheKey('form_get',{formId:a.formId}),cached=await store.record(key) as any;
   const ops=await store.operations(),formOps=ops.filter(op=>formTask(op)&&op.arguments.formId===a.formId),latest=formOps[formOps.length-1];
   let merged=result;
-  if(latest&&latest.state!=='confirmed'){
+  if(latest&&!confirmedAtStart.has(latest.id)){
+   if(latest.task==='form_submit'&&latest.state==='confirmed')merged={...result,draft:null};
+   else {
    let draft=cached?.draft;
    if(!draft&&result?.definition){
     const revision=revisionOf(latest),answers=effectiveAnswers(result.definition,latest.arguments.answers as any);
@@ -104,6 +111,7 @@ export async function studyClient(accountId:string,profileId:string,projectId?:s
     if(latest.task==='form_submit')draft.pendingSubmission=true;
    }
    if(draft)merged={...result,draft};
+   }
   }
   // With no pending form operation the server is authoritative: a confirmed
   // submission therefore clears the cached draft only after the server already
@@ -111,9 +119,9 @@ export async function studyClient(accountId:string,profileId:string,projectId?:s
   await store.putRecord(key,merged);
   return merged;
  }
- async function reconcileRead(task:string,a:any,result:any){
-  if(task==='reader_records')return mergeReaderRecords(a,result);
-  if(task==='form_get')return mergeFormGet(a,result);
+ async function reconcileRead(task:string,a:any,result:any,confirmedAtStart:Set<string>){
+  if(task==='reader_records')return mergeReaderRecords(a,result,confirmedAtStart);
+  if(task==='form_get')return mergeFormGet(a,result,confirmedAtStart);
   return result;
  }
  async function reconcileConfirmed(op:QueuedOperation,receipt:Receipt,ops:QueuedOperation[]){
@@ -220,7 +228,8 @@ export async function studyClient(accountId:string,profileId:string,projectId?:s
    return {operationId:op,status:state.state,result:projected};
   }
   if(navigator.onLine)try{
-   const result=await remote(task,args),merged=await reconcileRead(task,args,result);
+   const confirmedAtStart=new Set((await store.operations()).filter(o=>o.state==='confirmed').map(o=>o.id));
+   const result=await remote(task,args),merged=await reconcileRead(task,args,result,confirmedAtStart);
    if(task!=='reader_records'&&task!=='form_get'&&!preparedReads.has(task))await store.putRecord(cacheKey(task,args),merged);
    await active();
    return merged;
@@ -232,6 +241,17 @@ export async function studyClient(accountId:string,profileId:string,projectId?:s
   }
   const result=await packaged(task,args);await active();return result;
  };
- async function download(){await active();if(!projectId)throw Error('Estudo não selecionado.');try{await sync();const common=await remote('bundle_get',{projectId,profileId:null}) as PublishedManifest;await store.install(common,file=>fetchFile(file.path));try{const personal=await remote('bundle_get',{projectId,profileId}) as PublishedManifest;await store.install(personal,file=>fetchFile(file.path));}catch(e){if(!(e instanceof AppError&&e.status===404))throw e;}await active();return {downloaded:common.files.some(f=>f.offlineAllowed)};}catch(e){if(isAuth(e))await clearStore();throw e;}}
- return {api,store,sync,download,close:()=>{closed=true;store.close();}};
+ async function download(){await active();if(!projectId)throw Error('Estudo não selecionado.');try{await sync();const common=await remote('bundle_get',{projectId,profileId:null}) as PublishedManifest,manifests=[common];try{manifests.push(await remote('bundle_get',{projectId,profileId}) as PublishedManifest);}catch(e){if(!(e instanceof AppError&&e.status===404))throw e;}await store.installStudy(manifests,file=>fetchFile(file.path));await active();return {downloaded:common.files.some(f=>f.offlineAllowed)};}catch(e){if(isAuth(e))await clearStore();throw e;}}
+ let updateOperationId:string|null=null;
+ async function update(){
+  await active();if(!navigator.onLine)throw new AppError('OFFLINE','Conecte-se para conferir a nova revisão.',503);
+  await sync();
+  if((await store.operations()).some(o=>o.state!=='confirmed'))throw new AppError('PENDING','Resolva as operações pendentes antes de atualizar o estudo.',409);
+  await download();
+  updateOperationId??=crypto.randomUUID();
+  const receipt=await api('reader_rebase',{projectId,profileId,operationId:updateOperationId});
+  if(receipt.status!=='confirmed')throw new AppError('UNCERTAIN','Atualização ainda sem confirmação. Retome quando houver conexão.',503);
+  updateOperationId=null;return receipt.result;
+ }
+ return {api,store,sync,download,update,close:()=>{closed=true;store.close();}};
 }

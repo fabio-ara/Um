@@ -4,7 +4,7 @@ import {randomUUID as uuid} from 'node:crypto';
 import {localContext} from './local-context.ts';
 const demo=JSON.parse(await readFile('.local/demo.json','utf8'));
 test('discussão preserva rascunho em conflito e respostas após excluir comentário',async({page})=>{
- const ctx=await localContext(),ids:string[]=[];
+ const ctx=await localContext({closePool:false}),ids:string[]=[];
  const tokens=await Promise.all(demo.students.map(async(s:any)=>{const r=await fetch('http://127.0.0.1:4418/token?grant_type=password',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(s.credentials)});expect(r.status).toBe(200);return (await r.json() as any).access_token;}));
  const call=async(index:number,task:string,args:any)=>{const r=await fetch('http://127.0.0.1:4417/api/'+task,{method:'POST',headers:{Authorization:'Bearer '+tokens[index],'content-type':'application/json'},body:JSON.stringify(args)});const b=await r.json() as any;if(!r.ok)throw Error(`${task}: ${r.status} ${b.error?.code}`);return b.data;};
  try{

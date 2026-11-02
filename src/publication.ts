@@ -9,9 +9,10 @@ import {sourceView,fileRow} from './sources.ts';
 import {getFile,putFile} from './files.ts';
 import {projectRow} from './projects.ts';
 import {draftRow,draftContents} from './authoring.ts';
+import {lockAccountParameters,publicationParameters} from './parameters.ts';
 
 export type ContentIndex={id:string;kind:'unit'|'resource'|'choice'|'coverage';title:string;file:string;unitId?:string;position?:number};
-export type PublishedManifest=Manifest & {baseRevision:number;index:ContentIndex[];sourceIndex:{id:string;revision:number;title:string;metadata?:Record<string,any>;path:string;original:string|null}[];inspection:ContentBundle['inspection']};
+export type PublishedManifest=Manifest & {baseRevision:number;index:ContentIndex[];sourceIndex:{id:string;revision:number;title:string;metadata?:Record<string,any>;path:string;original:string|null}[];inspection:ContentBundle['inspection'];parameters?:Awaited<ReturnType<typeof publicationParameters>>};
 export const publicationSchemas={
  bundle_publish:z.strictObject({operationId:id,expectedRevision:z.number().int().nonnegative(),bundle:bundleSchema,reasons:z.array(reasonSchema).max(4000).default([])}),
  authoring_publish:z.strictObject({operationId:id,draftId:id,expectedRevision:revision}),
@@ -73,13 +74,15 @@ export async function publicationTask(identity:Identity,task:keyof typeof public
  for(const c of b.coverage)c.sourceAnchors.forEach(checkAnchor);
  if(b.profileId){
   const base=await published(identity,b.projectId,null,b.baseRevision);const unitIds=new Set(base.index.filter(x=>x.kind==='unit').map(x=>x.id));
+  ensure(b.resources.every(r=>!r.unitId||unitIds.has(r.unitId)),'UNIT_REQUIRED','Recurso pessoal aponta unidade inexistente na base.');
   ensure(b.baseRevision===p.activeRevision,'STALE_BASE','A base mudou. Revise o complemento antes de publicar.',409);
   ensure(b.coverage.every(c=>c.unitIds.every(u=>unitIds.has(u))),'COVERAGE','Cobertura pessoal aponta unidade inexistente na base.');
   for(const u of unitIds)ensure(b.choices.some(q=>q.unitId===u),'PRACTICE_REQUIRED','Cada unidade exige prática pessoal.');
   const reasonIds=new Set(a.reasons.map((r:any)=>r.resourceId));ensure([...b.resources,...b.choices].every(x=>reasonIds.has(x.id)),'REASONS_REQUIRED','Documente a relação entre respostas e cada complemento pessoal.');
- }else{ensure(!a.reasons.length,'PRIVATE_REASON','Justificativas pessoais não pertencem ao padrão.');ensure(b.baseRevision===b.revision,'REVISION','A base comum identifica a própria revisão.');}
+ }else{ensure(b.resources.every(r=>!r.unitId||b.units.some(u=>u.id===r.unitId)),'UNIT_REQUIRED','Recurso comum aponta unidade inexistente.');ensure(!a.reasons.length,'PRIVATE_REASON','Justificativas pessoais não pertencem ao padrão.');ensure(b.baseRevision===b.revision,'REVISION','A base comum identifica a própria revisão.');}
  return transaction(identity,db=>operation(db,identity,a.operationId,task,intent,async()=>{
   for(const [sourceId,s]of [...sources].sort(([a],[b])=>a.localeCompare(b))){const live=(await db.query('select um.lock_source($1) as revision',[sourceId])).rows[0];ensure(live?.revision===s.revision,'STALE_SOURCE','Uma fonte mudou durante a preparação.',409);}
+  await lockAccountParameters(db,identity.id);
   await db.query('select id from um.projects where id=$1 for update',[b.projectId]);
   if(prepared){const currentDraft=await draftRow(db,prepared.id,true);ensure(currentDraft.revision===prepared.revision&&currentDraft.status==='draft','CONFLICT','A preparação mudou durante a publicação.',409);}
   const project=await projectRow(db,b.projectId);
@@ -98,6 +101,7 @@ export async function publicationTask(identity:Identity,task:keyof typeof public
   }
   const offlineAllowed=[...sources.values()].every(s=>s.metadata.rights.offlineAllowed);
   const manifest:PublishedManifest={format:'um-package/1',projectId:b.projectId,revision:b.revision,profileId:b.profileId,baseRevision:b.baseRevision,files:[],sourceRevisions:Object.fromEntries([...sources].map(([k,v])=>[k,v.revision])),publishedAt:new Date().toISOString(),index:[],sourceIndex:[],inspection:b.inspection};
+  manifest.parameters=await publicationParameters(db,identity.id,project,b);
   async function store(kind:ContentIndex['kind'],obj:any){
    const staged=preparedFiles.find(f=>f.kind===kind&&f.id===obj.id);
    let file;

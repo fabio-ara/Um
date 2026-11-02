@@ -6,7 +6,7 @@ import {resolve,sep} from 'node:path';
 import {authenticate} from '../src/auth.ts';
 import {pool} from '../src/db.ts';
 import type {Identity} from '../src/contracts.ts';
-export async function localContext(){
+export async function localContext(options:{closePool?:boolean}={}){
  assert.equal(process.env.APP_MODE,'local','Integração exige a instância local Um.');
  const url=new URL(process.env.MIGRATION_DATABASE_URL!);assert.equal(url.hostname,'127.0.0.1');assert.equal(url.port,'57432');assert.equal(url.pathname,'/um');
  const admin=new pg.Client({connectionString:url.href});await admin.connect();const identities:Identity[]=[];
@@ -26,7 +26,7 @@ export async function localContext(){
    for(const job of jobs){assert.match(job.path,/^[a-f0-9-]{36}\/[a-f0-9-]{36}$/);const path=resolve(root,job.path);assert.ok(path.startsWith(root+sep));await rm(path,{force:true});await admin.query('delete from um.file_deletions where path=$1',[job.path]);}
   }
   for(const i of identities)await admin.query('delete from auth.users where id=$1',[i.id]);
-  }finally{await admin.end();await pool.end();}
+  }finally{await admin.end();if(options.closePool!==false)await pool.end();}
  }
  return {account,accountSession,admin,close};
 }

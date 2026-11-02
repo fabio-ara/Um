@@ -5,19 +5,19 @@ import {transaction,operation,type Transaction} from './db.ts';
 import {ensure} from './errors.ts';
 import {validateForm,validateSubmission,effectiveAnswers,visibleQuestions} from './forms.ts';
 import {authoringSummary} from './authoring.ts';
+import {configurationSchema as configuration,requirementsSchema,intentionSchema} from './parameters.ts';
 
 const short=z.string().trim().min(1).max(2000);
 const page={offset:z.number().int().min(0).default(0),limit:z.number().int().min(1).max(50).default(20)};
-const configuration=z.strictObject({editorial:z.record(z.string(),z.unknown()),instructional:z.record(z.string(),z.unknown())});
-const metadata=z.strictObject({object:z.strictObject({kind:z.enum(['work','theme']),workIds:z.array(id).max(100),subject:short}),scope:short,language:z.string().min(2).max(40),audience:short,configuration});
+const metadata=z.strictObject({object:z.strictObject({kind:z.enum(['work','theme']),workIds:z.array(id).max(100),subject:short}),scope:short,language:z.string().min(2).max(40),audience:short,configuration,requirements:requirementsSchema.optional(),parameterIntention:intentionSchema.optional()});
 const question=z.strictObject({id:short,type:z.enum(['single_choice','multiple_choice','text']),prompt:short,required:z.boolean(),options:z.array(z.strictObject({id:short,label:short})).max(100).optional(),showWhen:z.strictObject({questionId:short,operator:z.enum(['equals','in','present']),values:z.array(z.string()).optional()}).optional(),familiarityReferences:z.array(short).max(50).optional()});
 const definition=z.strictObject({id,revision,projectId:id,profileId:id,questions:z.array(question).max(64),purposeByQuestion:z.record(z.string(),short),planningReference:short,maxQuestions:z.number().int().min(1).max(32)});
 const answers=z.record(z.string(),z.union([z.string().max(20000),z.array(z.string().max(2000)).max(100)]));
 export const projectSchemas={
  project_list:z.strictObject({...page,query:z.string().max(200).default('')}),
  project_get:z.strictObject({projectId:id}),
- project_create:z.strictObject({operationId:id,title:short,metadata}),
- project_update:z.strictObject({operationId:id,projectId:id,expectedRevision:revision,title:short.optional(),metadata:metadata.partial().optional()}),
+ project_create:z.strictObject({operationId:id,title:short,metadata}).refine(a=>a.metadata.parameterIntention||!Object.keys(a.metadata.configuration.editorial).length&&!Object.keys(a.metadata.configuration.instructional).length&&!a.metadata.requirements?.length,'Registre a intenção dos parâmetros fixados.'),
+ project_update:z.strictObject({operationId:id,projectId:id,expectedRevision:revision,title:short.optional(),metadata:metadata.partial().optional()}).refine(a=>!a.metadata||!('configuration'in a.metadata||'requirements'in a.metadata)||a.metadata.parameterIntention,'Registre a intenção da alteração de parâmetros.'),
  project_delete:z.strictObject({operationId:id,projectId:id,expectedRevision:revision}),
  participation_add:z.strictObject({operationId:id,projectId:id,profileId:id}),
  participation_remove:z.strictObject({operationId:id,projectId:id,profileId:id}),

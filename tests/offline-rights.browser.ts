@@ -3,7 +3,7 @@ import {randomUUID as uuid} from 'node:crypto';
 import {localContext} from './local-context.ts';
 import {sourceGuardFixture} from './source-guard-fixture.ts';
 test('reconexão retira pacote sem permissão offline e conserva a nota criada sem rede',async({page,context})=>{
- const ctx=await localContext(),account=await ctx.accountSession(),f=await sourceGuardFixture(account.identity);
+ const ctx=await localContext({closePool:false}),account=await ctx.accountSession(),f=await sourceGuardFixture(account.identity);
  try{
   const profileId=(await f.call('profile_create',{operationId:uuid(),fields:{name:'Titular da fixture de direitos'},self:true})).result.profileId;
   await f.call('participation_add',{operationId:uuid(),projectId:f.projectId,profileId});
@@ -24,9 +24,9 @@ test('reconexão retira pacote sem permissão offline e conserva a nota criada s
   await context.setOffline(true);
   const result=await page.evaluate(async({sourceId,projectId,profileId,unitId})=>{
    const c=(window as any).__rightsClient;
-   return {source:await c.api('source_get',{sourceId}).then(()=>({leak:true}),(e:any)=>({code:e.code})),unit:await c.api('content_get',{projectId,profileId:null,revision:1,contentId:unitId}).then(()=>({leak:true}),(e:any)=>({code:e.code})),notes:(await c.api('reader_records',{projectId,profileId,kind:'note'})).items.map((n:any)=>n.data.text)};
+   return {manifest:await c.api('bundle_get',{projectId,profileId:null}).then(()=>({leak:true}),(e:any)=>({code:e.code})),source:await c.api('source_get',{sourceId}).then(()=>({leak:true}),(e:any)=>({code:e.code})),unit:await c.api('content_get',{projectId,profileId:null,revision:1,contentId:unitId}).then(()=>({leak:true}),(e:any)=>({code:e.code})),notes:(await c.api('reader_records',{projectId,profileId,kind:'note'})).items.map((n:any)=>n.data.text)};
   },{sourceId:f.sourceId,projectId:f.projectId,profileId,unitId:f.unitId});
-  expect(result).toEqual({source:{code:'OFFLINE_MISSING'},unit:{code:'OFFLINE_MISSING'},notes:['Nota privada preservada durante mudança de direitos.']});
+  expect(result).toEqual({manifest:{code:'OFFLINE_MISSING'},source:{code:'OFFLINE_MISSING'},unit:{code:'OFFLINE_MISSING'},notes:['Nota privada preservada durante mudança de direitos.']});
   await page.evaluate(()=>(window as any).__rightsClient.close());
  }finally{await context.setOffline(false);await page.close();await ctx.close();}
 });

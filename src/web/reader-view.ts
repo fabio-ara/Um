@@ -5,7 +5,7 @@ import { utf16ToCodePoint, selectionMatches } from '../anchors.ts';
 import {foregroundSeconds,remainingMinutes,type TimeMode} from '../study-time.ts';
 import type { Anchor, Choice, DocumentLink, ReaderTab, Resource, StudyUnit } from '../contracts.ts';
 
-type Options = { projectId: string; profileId: string; api: StudyApi; onExit: () => void };
+type Options = { projectId: string; profileId: string; api: StudyApi; onExit: () => void; onUpdate?:()=>Promise<void> };
 type IndexEntry = { id: string; kind: 'unit' | 'resource' | 'choice' | 'coverage'; title: string; file: string; unitId?: string; position?: number };
 type SourceIndexEntry = { id: string; revision: number; title: string; path: string; original: string | null };
 type Manifest = {
@@ -400,6 +400,7 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
         items.push(item);
         added += 1;
       }
+      if(Object.hasOwn(result,'nextOffset')){if(result.nextOffset===null)return items;offset=result.nextOffset;continue;}
       if (pageItems.length < RECORD_LIMIT) return items;
       if (added === 0) {
         recordErrors.set(kind, 'Leitura interrompida: a página não avançou; há registros não carregados.');
@@ -1297,6 +1298,7 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
           <div class="reader-head-actions">
             ${originVisible ? iconButton('reposition', 'Voltar à origem', 'tab-origin') : ''}
             ${iconButton('arrow-left', 'Sair do leitor', 'exit')}
+            ${options.onUpdate?iconButton('reset','Conferir e atualizar este estudo','update-study'):''}
           </div>
         </header>
         <div class="reader-status" role="status" aria-live="polite">${h(statuses.join(' · '))}</div>
@@ -1803,7 +1805,7 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
     const blocks = page.blocks.map(block => {
       let content = h(block.text);
       const hit = tab.anchor;
-      if (hit && hit.elementId === block.id) {
+      if (!review&&hit&&hit.sourceId===tab.objectId&&hit.sourceRevision===tab.revision&&hit.elementId===block.id&&Array.from(block.text).slice(hit.start,hit.end).join('')===hit.exact) {
         const points = Array.from(block.text || '');
         content = `${h(points.slice(0, hit.start).join(''))}<mark class="source-hit">${h(points.slice(hit.start, hit.end).join(''))}</mark>${h(points.slice(hit.end).join(''))}`;
       }
@@ -1865,6 +1867,14 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
 
   async function handleAction(action: string, button: HTMLElement): Promise<void> {
     switch (action) {
+      case 'update-study':
+        if(!options.onUpdate)return;
+        if(saving)throw new Error('Aguarde a confirmação das abas antes de atualizar.');
+        if(saveTimer!==null){clearTimeout(saveTimer);saveTimer=null;}queuedSave=false;
+        await saveNow();if(saveStatus)throw new Error(saveStatus);
+        booted=false;
+        try{await options.onUpdate();}catch(error){booted=true;throw error;}
+        return;
       case 'exit':
         flushTime(true);
         await saveNow();

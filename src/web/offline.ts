@@ -43,6 +43,7 @@ interface StoredHead {
 
 export interface OfflineStore {
   install(manifest: Manifest, fetchFile: (file: FileEntry) => Promise<Uint8Array>): Promise<void>;
+  installStudy(manifests:Manifest[],fetchFile:(file:FileEntry)=>Promise<Uint8Array>):Promise<void>;
   package(projectId: string, personal: boolean): Promise<{ manifest: Manifest; files: Record<string, Uint8Array> } | null>;
   enqueue(operation: QueuedOperation, records?: Record<string,unknown>): Promise<void>;
   operations(): Promise<QueuedOperation[]>;
@@ -298,7 +299,7 @@ class OfflineStoreImpl implements OfflineStore {
     });
   }
 
-  install = async (manifest: Manifest, fetchFile: (file: FileEntry) => Promise<Uint8Array>): Promise<void> => {
+  private prepare = async (manifest: Manifest, fetchFile: (file: FileEntry) => Promise<Uint8Array>): Promise<{pkg:StoredPackage;head:StoredHead}> => {
     this.assertOpen();
     const raw = manifest as unknown as Record<string, unknown>;
     if (!isPlainObject(raw)) fail("INVALID_MANIFEST", "manifest must be an object");
@@ -380,9 +381,23 @@ class OfflineStoreImpl implements OfflineStore {
       installedAt: Date.now(),
     };
 
-    await this.transaction(["packages", "heads"], "readwrite", (tx) => {
-      tx.objectStore("packages").put(pkg);
-      tx.objectStore("heads").put(head);
+    return {pkg,head};
+  };
+
+  install = async (manifest:Manifest,fetchFile:(file:FileEntry)=>Promise<Uint8Array>):Promise<void> => {
+    const prepared=await this.prepare(manifest,fetchFile);
+    await this.transaction(['packages','heads'],'readwrite',tx=>{tx.objectStore('packages').put(prepared.pkg);tx.objectStore('heads').put(prepared.head);});
+  };
+
+  installStudy = async (manifests:Manifest[],fetchFile:(file:FileEntry)=>Promise<Uint8Array>):Promise<void> => {
+    const common=manifests.find(m=>m.profileId===null),personal=manifests.find(m=>m.profileId!==null);
+    if(!common||manifests.length>2||manifests.filter(m=>m.profileId===null).length!==1||personal&&((personal as Manifest&{baseRevision:number}).baseRevision!==common.revision||personal.projectId!==common.projectId))fail('STALE_BASE','Os apoios ainda não correspondem à base atual.',409);
+    const prepared:{pkg:StoredPackage;head:StoredHead}[]=[];
+    for(const manifest of manifests)prepared.push(await this.prepare(manifest,fetchFile));
+    // No head is changed until every permitted byte in both packages verifies.
+    await this.transaction(['packages','heads'],'readwrite',tx=>{
+      for(const {pkg,head}of prepared){tx.objectStore('packages').put(pkg);tx.objectStore('heads').put(head);}
+      if(!personal){tx.objectStore('packages').delete(this.packageKey('personal',common.projectId));tx.objectStore('heads').delete(this.headKey('personal',common.projectId));}
     });
   };
 
@@ -664,7 +679,7 @@ class OfflineStoreImpl implements OfflineStore {
   discardPreparedReads = async (): Promise<void> => {
     this.assertOpen();
     await withLock(this.prefix,()=>this.transaction(['records'],'readwrite',tx=>{
-      for(const task of ['source_get','source_locate','content_get','choice_sequence'])tx.objectStore('records').delete(rangeForPrefix(this.recordKey(`read:${task}:`)));
+      for(const task of ['bundle_get','source_get','source_locate','content_get','choice_sequence'])tx.objectStore('records').delete(rangeForPrefix(this.recordKey(`read:${task}:`)));
     }));
   };
 
@@ -674,7 +689,7 @@ class OfflineStoreImpl implements OfflineStore {
     this.assertOpen();const scope:Scope=personal?'personal':'common';
     await withLock(this.prefix,()=>this.transaction(['records','packages','heads'],'readwrite',tx=>{
       tx.objectStore('packages').delete(this.packageKey(scope,projectId));tx.objectStore('heads').delete(this.headKey(scope,projectId));
-      for(const task of ['source_get','source_locate','content_get','choice_sequence'])tx.objectStore('records').delete(rangeForPrefix(this.recordKey(`read:${task}:`)));
+      for(const task of ['bundle_get','source_get','source_locate','content_get','choice_sequence'])tx.objectStore('records').delete(rangeForPrefix(this.recordKey(`read:${task}:`)));
     }));
   };
 

@@ -7,7 +7,7 @@ import {sourceView} from '../src/sources.ts';
 import {selectAndCapture} from './browser-selection.ts';
 
 test('seleção multilíngue preserva pontos de código e exige escolha entre recursos preparados',async({page})=>{
- const ctx=await localContext(),account=await ctx.accountSession();
+ const ctx=await localContext({closePool:false}),account=await ctx.accountSession();
  const call=(name:any,args:any)=>execute(name,args,account.identity) as Promise<any>;
  try{
   const profileId=(await call('profile_create',{operationId:uuid(),fields:{name:'Fixture Unicode'},self:true})).result.profileId;

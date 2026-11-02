@@ -6,7 +6,7 @@ async function login(page:Page,credentials:{email:string;password:string}){
  await page.getByLabel('E-mail',{exact:true}).fill(credentials.email);await page.getByLabel('Senha',{exact:true}).fill(credentials.password);await page.getByRole('button',{name:'Entrar',exact:true}).click();await expect(page.getByRole('heading',{name:'Meus estudos',exact:true})).toBeVisible();
 }
 test('troca de conta rejeita resposta real atrasada e impede acesso ao cache anterior offline',async({page,context})=>{
- const ctx=await localContext(),a=await ctx.accountSession(),b=await ctx.accountSession();
+ const ctx=await localContext({closePool:false}),a=await ctx.accountSession(),b=await ctx.accountSession();
  let release!:()=>void;const delayed=new Promise<void>(resolve=>{release=resolve;});let entered!:()=>void;const received=new Promise<void>(resolve=>{entered=resolve;});let hold=true;
  try{
   await execute('profile_create',{operationId:uuid(),fields:{name:'Privado da conta A'},self:true},a.identity);await execute('profile_create',{operationId:uuid(),fields:{name:'Privado da conta B'},self:true},b.identity);

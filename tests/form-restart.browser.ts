@@ -6,7 +6,7 @@ import {localContext} from './local-context.ts';
 import {execute} from '../src/service.ts';
 
 test('rascunhos de dois perfis sobrevivem ao encerramento do Chrome e envio remove respostas ocultas',async()=>{
- const ctx=await localContext(),account=await ctx.accountSession();let browser:BrowserContext|undefined;
+ const ctx=await localContext({closePool:false}),account=await ctx.accountSession();let browser:BrowserContext|undefined;
  const call=(name:any,args:any)=>execute(name,args,account.identity) as Promise<any>;
  await mkdir('.local/proofs',{recursive:true});const userData=await mkdtemp(resolve('.local/form-restart-'));
  const profiles:{id:string;projectId:string;formId:string}[]=[];

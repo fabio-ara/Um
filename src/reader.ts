@@ -59,7 +59,7 @@ export async function readerTask(identity:Identity,task:keyof typeof readerSchem
    const records=(await db.query("select * from um.reader_records where project_id=$1 and profile_id=$2 and kind in ('note','term','state') for update",[a.projectId,a.profileId])).rows;let review=0;
    function updateAnchor(anchor:any){if(!anchor)return {anchor,status:'verified'};const source=sourceMap.get(anchor.sourceId);if(!source){review++;return {anchor,status:'needs_review'};}const result=reanchor(anchor,source);if(result.status==='needs_review'){review++;return {anchor:result.previous,status:result.status};}return result;}
    for(const r of records){const data=structuredClone(r.data);
-    if(r.kind==='state')for(const t of data.tabs){const target=updateAnchor(t.anchor),origin=updateAnchor(t.origin);t.anchor=target.anchor;t.origin=origin.anchor;t.anchorStatus=target.status==='needs_review'||origin.status==='needs_review'?'needs_review':'verified';}
+    if(r.kind==='state')for(const t of data.tabs){const target=updateAnchor(t.anchor),origin=updateAnchor(t.origin);t.anchor=target.anchor;t.origin=origin.anchor;t.anchorStatus=target.status==='needs_review'||origin.status==='needs_review'?'needs_review':'verified';if(t.kind==='source'&&t.anchorStatus==='verified'&&sourceMap.has(t.objectId))t.revision=sourceMap.get(t.objectId)!.revision;else if(t.kind!=='source'&&manifest.index.some(i=>i.id===t.objectId))t.revision=manifest.revision;}
     else {const target=updateAnchor(data.anchor);data.anchor=target.anchor;data.anchorStatus=target.status;}
     await db.query('update um.reader_records set data=$2,revision=revision+1 where id=$1',[r.id,JSON.stringify(data)]);
    }
