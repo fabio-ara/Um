@@ -481,7 +481,7 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
   async function boot(): Promise<void> {
     const results = await Promise.all([
       api('bundle_get', { projectId, profileId: null }),
-      api('bundle_get', { projectId, profileId }).catch((error: unknown) => { personalError = messageOf(error); return null; }),
+      api('bundle_get', { projectId, profileId }).catch((error: unknown) => { personalError = (error as {code?:string})?.code==='NOT_FOUND'?'Seus apoios pessoais ainda estão em preparação.':`Não foi possível abrir os apoios pessoais: ${messageOf(error)}`; return null; }),
     ]);
     commonManifest = results[0] as Manifest;
     personalManifest = results[1] as Manifest | null;
@@ -1278,7 +1278,7 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
     else body = renderSourceTab(tab);
 
     const statuses: string[] = [];
-    if (personalError) statuses.push(`Complemento pessoal indisponível: ${personalError}`);
+    if (personalError) statuses.push(personalError);
     if (saveStatus) statuses.push(saveStatus);
     if (journalStatus) statuses.push(journalStatus);
     if (recordErrors.get('state')) statuses.push(`Estado não restaurado: ${recordErrors.get('state')}`);
@@ -1846,7 +1846,7 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
     if (openForm === 'observation') form = formBlock('Observação', `<label class="field-label" for="observation-text">Observação</label><textarea id="observation-text" class="field-input" data-field="observation-text" rows="4"></textarea><div class="button-row">${iconButton('review', 'Registrar observação', 'save-observation')}</div>`);
     if (openForm === 'comment') form = formBlock('Comentário', `<label class="field-label" for="comment-text">Comentário</label><textarea id="comment-text" class="field-input" data-field="comment-text" rows="4"></textarea><div class="button-row">${iconButton('prompt', 'Enviar comentário', 'save-comment')}</div>`);
     return `<section class="selection-panel" aria-labelledby="selection-title">
-      <div class="section-head"><h3 id="selection-title">Seleção</h3><span class="badge">${selAnchor.exact.length} caractere(s)</span></div>
+      <div class="section-head"><h3 id="selection-title">Seleção</h3><span class="badge">${Array.from(selAnchor.exact).length} caractere(s)</span></div>
       <p class="quote" dir="auto">${h(selAnchor.exact)}</p>
       <p class="meta-line">Bloco ${h(selAnchor.elementId)} · posições ${selAnchor.start}–${selAnchor.end}</p>
       <div class="button-row">

@@ -14,12 +14,13 @@ export const profileSchemas={
   profile_create:z.strictObject({operationId:id,fields:fieldsSchema,self:z.boolean().default(false)}),
   profile_update:z.strictObject({operationId:id,profileId:id,fields:fieldsSchema}),
   invite_create:z.strictObject({operationId:id,profileId:id,expiresInHours:z.number().int().min(1).max(168).default(72)}),
+  invite_list:z.strictObject({profileId:id,offset:z.number().int().nonnegative().default(0),limit:z.number().int().min(1).max(50).default(20)}),
   invite_revoke:z.strictObject({operationId:id,inviteId:id}),
   invite_accept:z.strictObject({operationId:id,token:z.string().regex(/^[A-Za-z0-9_-]{43}$/)}),
   profile_control:z.strictObject({operationId:id,profileId:id,action:z.enum(['revoke_creator','publish','private','delete'])}),
   ...personalExportSchemas,
 };
-export const profileReadTasks=new Set(['profile_list','profile_get',...Object.keys(personalExportSchemas)]);
+export const profileReadTasks=new Set(['profile_list','profile_get','invite_list',...Object.keys(personalExportSchemas)]);
 async function requireProfile(db:Transaction,profileId:string){const q=await db.query('select * from um.profiles where id=$1',[profileId]);ensure(q.rowCount,'NOT_FOUND','Perfil indisponível.',404);return profile(q.rows[0]);}
 export async function profileTask(identity:Identity,task:keyof typeof profileSchemas,input:unknown){
   if(Object.hasOwn(personalExportSchemas,task))return personalExportTask(identity,task as keyof typeof personalExportSchemas,input);
@@ -30,6 +31,7 @@ export async function profileTask(identity:Identity,task:keyof typeof profileSch
     }
     if(task==='profile_list')return {items:(await db.query('select * from um.profiles order by id limit $1 offset $2',[args.limit,args.offset])).rows.map(profile),offset:args.offset,limit:args.limit};
     if(task==='profile_get')return requireProfile(db,args.profileId);
+    if(task==='invite_list'){await requireProfile(db,args.profileId);return {items:(await db.query('select id,profile_id,expires_at,revoked,used_by is not null as used from um.invites where profile_id=$1 order by expires_at desc,id limit $2 offset $3',[args.profileId,args.limit,args.offset])).rows,offset:args.offset,limit:args.limit};}
     // Check current access BEFORE a receipt can be returned after revocation.
     if(args.profileId)await requireProfile(db,args.profileId);
     return operation(db,identity,args.operationId,task,args,async()=>{

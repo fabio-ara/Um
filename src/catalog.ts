@@ -10,7 +10,7 @@ export const relationSchema=z.strictObject({id,from:id,to:id,type:z.enum(['influ
 const entrySchema=z.strictObject({id,kind:z.enum(['method','resource']),name:text,purpose:text,conditions:strings,limits:strings,instructions:text.max(20000),references:strings.min(1),type:text.max(100),revision,disabled:z.boolean().optional()});
 const filters=z.strictObject({query:z.string().max(200).optional(),language:z.string().max(40).optional(),kinds:z.array(entitySchema.shape.kind).optional(),regions:ids.optional(),traditions:ids.optional(),disciplines:ids.optional(),periods:ids.optional(),authorIds:ids.optional(),fromYear:z.number().int().optional(),toYear:z.number().int().optional(),offset:z.number().int().nonnegative().default(0),limit:z.number().int().min(1).max(100).default(30)});
 export const catalogSchemas={
- catalog_list:z.strictObject({kind:z.enum(['method','resource']).optional()}),
+ catalog_list:z.strictObject({kind:z.enum(['method','resource']).optional(),offset:z.number().int().nonnegative().default(0),limit:z.number().int().min(1).max(100).default(30)}),
  catalog_save:z.strictObject({operationId:id,entry:entrySchema,expectedRevision:z.number().int().nonnegative()}),
  catalog_reset:z.strictObject({operationId:id,entryId:id}),
  library_search:filters,
@@ -40,7 +40,7 @@ export async function catalogTask(identity:Identity,task:keyof typeof catalogSch
  return transaction(identity,async db=>{
   if(!catalogReadTasks.has(task))await db.query('select pg_advisory_xact_lock(hashtextextended($1,0))',[`catalog:${identity.id}`]);
   const all=await rows(db),entries=effective(all),entities=entries.filter(r=>r.kind==='entity').map(r=>r.data as LibraryEntity),relations=entries.filter(r=>r.kind==='relation').map(r=>r.data as LibraryRelation);
-  if(task==='catalog_list'){const list=effectiveCatalog(all.filter(r=>r.account_id===null&&['method','resource'].includes(r.kind)).map(r=>r.data),all.filter(r=>r.account_id!==null&&['method','resource'].includes(r.kind)).map(r=>r.data));return {items:list.filter(r=>!a.kind||r.kind===a.kind)};}
+  if(task==='catalog_list'){const list=effectiveCatalog(all.filter(r=>r.account_id===null&&['method','resource'].includes(r.kind)).map(r=>r.data),all.filter(r=>r.account_id!==null&&['method','resource'].includes(r.kind)).map(r=>r.data)).filter(r=>!a.kind||r.kind===a.kind).sort((a,b)=>a.id.localeCompare(b.id));return {items:list.slice(a.offset,a.offset+a.limit),total:list.length,offset:a.offset,limit:a.limit};}
   if(task==='library_search')return filterLibrary(entities,a);
   if(task==='library_map'){const page=filterLibrary(entities,a);return {...page,locations:documentedLocations(page.items)};}
   if(task==='library_graph')return graphPage(entities,relations,a.entityIds,a.offset,a.limit);

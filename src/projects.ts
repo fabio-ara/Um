@@ -4,6 +4,7 @@ import {id,revision,type Identity,type FormDefinition,type Project} from './cont
 import {transaction,operation,type Transaction} from './db.ts';
 import {ensure} from './errors.ts';
 import {validateForm,validateSubmission,effectiveAnswers,visibleQuestions} from './forms.ts';
+import {authoringSummary} from './authoring.ts';
 
 const short=z.string().trim().min(1).max(2000);
 const page={offset:z.number().int().min(0).default(0),limit:z.number().int().min(1).max(50).default(20)};
@@ -50,7 +51,8 @@ export async function projectTask(identity:Identity,task:keyof typeof projectSch
   if(task==='project_get'){
    const project=await projectRow(db,a.projectId);
    const participation=(await db.query('select p.*,f.published as form_published,f.revision as form_revision,s.form_revision as submitted_form_revision from um.participations p left join um.forms f on f.id=p.form_id left join um.submissions s on s.id=p.submission_id where p.project_id=$1 order by p.id',[a.projectId])).rows;
-   return {project,participations:participation.map(p=>({...p,nextAction:nextAction(project,p)})),nextAction:!project.sourceIds.length?'include_sources':!participation.length?'add_participant':project.activeRevision?'resume_participant':'prepare_standard'};
+   const authoring=await authoringSummary(db,project.id);
+   return {project,authoring,participations:participation.map(p=>({...p,nextAction:p.state==='producing'?'authoring_list':nextAction(project,p)})),nextAction:authoring.items.some(d=>d.status==='draft')?'authoring_list':!project.sourceIds.length?'include_sources':!participation.length?'add_participant':project.activeRevision?'resume_participant':'prepare_standard'};
   }
   if(task==='form_get'){
    const f=await formRow(db,a.formId);

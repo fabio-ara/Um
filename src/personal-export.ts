@@ -12,6 +12,8 @@ const sections={
  records:'select * from um.reader_records where profile_id=$1',
  bundles:'select * from um.bundles where profile_id=$1',
  reasons:'select resource_id as id,* from um.personalization_reasons where profile_id=$1',
+ authoring:'select * from um.authoring_drafts where profile_id=$1',
+ authoringItems:"select i.draft_id::text||':'||i.kind||':'||i.id::text as id,i.kind,i.position,i.file_path from um.authoring_items i join um.authoring_drafts d on d.id=i.draft_id where d.profile_id=$1",
  comments:'select * from um.comments where origin_profile_id=$1',
  observations:'select * from um.observations where origin_profile_id=$1',
  files:'select path as id,path,sha256,bytes,media_type,offline_allowed from um.files where profile_id=$1',

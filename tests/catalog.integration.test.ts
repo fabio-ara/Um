@@ -9,7 +9,8 @@ test('catálogo efetivo isolado e fusão transacional redirecionam obras sem mud
  const create=(kind:string,name:string)=>({id:uuid(),kind,labels:{pt:name},aliases:[],authorIds:[],regions:[],traditions:[],disciplines:[],periods:[],dates:{start:null,end:null,approximate:false},locations:[],metadata:{}});
  const a=create('author','Autora A'),b=create('author','Autora B'),work={...create('work','Obra'),authorIds:[a.id,b.id],authorship:'multiple'};
  for(const entity of [a,b,work])await catalogTask(author,'library_save',{operationId:uuid(),entity,expectedRevision:0});
- assert.equal((await catalogTask(other,'library_search',{}) as any).items.length,0);
+ const visible=(await catalogTask(other,'library_search',{}) as any).items;
+ for(const entity of [a,b,work]){assert.ok(!visible.some((item:any)=>item.id===entity.id));await assert.rejects(catalogTask(other,'library_get',{entityId:entity.id}),/indisponível/);}
  await catalogTask(author,'library_rename',{operationId:uuid(),entityId:a.id,expectedRevision:1,language:'pt',label:'Autora A corrigida'});
  await catalogTask(author,'library_merge',{operationId:uuid(),fromIds:[b.id],targetId:a.id});
  const stored=await catalogTask(author,'library_get',{entityId:work.id}) as any;assert.deepEqual(stored.entity.authorIds,[a.id]);assert.equal(stored.entity.authorship,'multiple');
