@@ -1,3 +1,4 @@
+import type {Buffer} from 'node:buffer';
 // Reutilizado de AraRead, MIT, Copyright (c) 2026 Fabio Ara.
 import {unzipSync,Unzip,UnzipInflate} from 'fflate';
 import {DOMParser} from 'linkedom';
