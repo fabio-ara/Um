@@ -38,6 +38,7 @@ const SOURCE_LIMIT = 40;
 const FULL_LIMIT = 100;
 const RECORD_LIMIT = 100;
 const MAX_RECORD_PAGES = 500;
+const UUID_LIKE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const uid = (): string => crypto.randomUUID();
 const h = (v: unknown) => escapeHtml(v);
 const anchorKey = (anchor: Anchor): string => [anchor.sourceId, anchor.sourceRevision, anchor.elementId, anchor.start, anchor.end].join('|');
@@ -70,12 +71,22 @@ function dataOf(item: RecordItem | undefined): any {
   return item.data;
 }
 
+function validAnchor(value: any): value is Anchor {
+  return Boolean(value && typeof value === 'object'
+    && typeof value.sourceId === 'string' && value.sourceId.length > 0
+    && Number.isInteger(value.sourceRevision)
+    && typeof value.elementId === 'string'
+    && Number.isInteger(value.start) && Number.isInteger(value.end)
+    && value.start >= 0 && value.end > value.start
+    && typeof value.exact === 'string' && value.exact.length > 0);
+}
+
 function targetOf(value: any): Anchor | null {
   if (!value) return null;
   if (typeof value === 'string') {
-    try { return JSON.parse(value) as Anchor; } catch { return null; }
+    try { return targetOf(JSON.parse(value)); } catch { return null; }
   }
-  return typeof value === 'object' ? value as Anchor : null;
+  return validAnchor(value) ? value : null;
 }
 
 const RELATION: Record<string, string> = { supports: 'Fundamenta', interprets: 'Interpreta', contrasts: 'Contrasta', illustrates: 'Ilustra' };
@@ -129,6 +140,9 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
   let confirmDelete: string | null = null;
   let journalStatus = '';
   const writeOps = new Map<string, string>();
+  const inFlightWrites = new Set<string>();
+  let editingCommentId: string | null = null;
+  let confirmRemoveComment: string | null = null;
 
   let sectionOpen = new Set<string>(['resources']);
   let openForm: string | null = null;
@@ -173,6 +187,15 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
   const activeTab = () => tabs.find(t => t.id === activeTabId) || null;
   const unitEntry = (id: string) => units.find(u => u.id === id) || null;
   const unitTitle = (id: string) => unitEntry(id)?.title || 'Unidade';
+
+  function authorLabel(item: any, fallback: string): string {
+    if (item && typeof item.origin_profile_id === 'string' && item.origin_profile_id === profileId) return 'Você';
+    for (const key of ['author_name', 'authorName', 'display_name', 'displayName', 'name']) {
+      const value = item?.[key];
+      if (typeof value === 'string' && value.trim() && !UUID_LIKE.test(value.trim())) return value.trim();
+    }
+    return fallback;
+  }
 
   function manifestFor(id: string): { manifest: Manifest; profile: string | null } | null {
     if (personalManifest && !personalStale && personalManifest.index.some(e => e.id === id)) return { manifest: personalManifest, profile: profileId };
@@ -388,14 +411,44 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
     return items;
   }
 
+  async function loadDiscussionItems(task: 'comment_list' | 'observation_list', key: 'comments' | 'observations'): Promise<any[]> {
+    recordErrors.delete(key);
+    const items: any[] = [];
+    const seen = new Set<string>();
+    let offset = 0;
+    for (let pageNumber = 0; pageNumber < MAX_RECORD_PAGES; pageNumber += 1) {
+      let result: any;
+      try {
+        result = await api(task, { projectId, offset, limit: RECORD_LIMIT });
+      } catch (error) {
+        recordErrors.set(key, `${messageOf(error)} (${items.length} registro(s) já lidos)`);
+        return items;
+      }
+      const pageItems: any[] = Array.isArray(result?.items) ? result.items : [];
+      let added = 0;
+      for (const item of pageItems) {
+        if (!item || typeof item.id !== 'string' || seen.has(item.id)) continue;
+        seen.add(item.id);
+        items.push(item);
+        added += 1;
+      }
+      if (pageItems.length < RECORD_LIMIT) return items;
+      if (added === 0) {
+        recordErrors.set(key, 'Leitura interrompida: a página não avançou; há registros não carregados.');
+        return items;
+      }
+      offset += pageItems.length;
+    }
+    recordErrors.set(key, `Leitura limitada a ${MAX_RECORD_PAGES} páginas de ${RECORD_LIMIT} registros; há registros não carregados.`);
+    return items;
+  }
+
   async function loadComments(): Promise<void> {
-    try { comments = (await api('comment_list', { projectId, offset: 0, limit: 100 }))?.items || []; }
-    catch (error) { recordErrors.set('comments', messageOf(error)); }
+    comments = await loadDiscussionItems('comment_list', 'comments');
   }
 
   async function loadObservations(): Promise<void> {
-    try { observations = (await api('observation_list', { projectId, offset: 0, limit: 100 }))?.items || []; }
-    catch (error) { recordErrors.set('observations', messageOf(error)); }
+    observations = await loadDiscussionItems('observation_list', 'observations');
   }
 
   async function loadState(): Promise<{ id: string; revision: number; data: any } | null> {
@@ -576,6 +629,8 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
     selMatches = [];
     openForm = null;
     replyTo = null;
+    editingCommentId = null;
+    confirmRemoveComment = null;
     scheduleSave();
     pendingFocus = `[data-action="switch-tab"][data-tab="${id}"]`;
     render();
@@ -665,6 +720,9 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
     selAnchor = null;
     selMatches = [];
     openForm = null;
+    replyTo = null;
+    editingCommentId = null;
+    confirmRemoveComment = null;
     forceScrollTop = true;
     scheduleSave();
     pendingFocus = '#unit-title';
@@ -786,6 +844,19 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
 
   function writeNotice(receipt:any,confirmed:string){const outcome=outcomeOf(receipt);if(outcome.state==='confirmed')announce(confirmed);else if(outcome.state==='pending'){saveStatus='Alteração salva neste dispositivo; confirmação remota pendente.';announce(saveStatus);}else throw new Error('Operação sem confirmação.');}
 
+  function receiptConfirmed(receipt: any, confirmed: string, pending: string): boolean {
+    const outcome = outcomeOf(receipt);
+    if (outcome.state === 'confirmed') { announce(confirmed); return true; }
+    if (outcome.state === 'pending') { saveStatus = pending; announce(pending); return false; }
+    throw new Error('Operação sem confirmação.');
+  }
+
+  async function guardedWrite(key: string, run: () => Promise<void>): Promise<void> {
+    if (inFlightWrites.has(key)) return;
+    inFlightWrites.add(key);
+    try { await run(); } finally { inFlightWrites.delete(key); }
+  }
+
   async function answer(optionId: string): Promise<void> {
     if (!practice || practice.feedback) return;
     const question = practice.questions[practice.index];
@@ -836,16 +907,23 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
   async function shareNote(button: HTMLElement): Promise<void> {
     const recordId = button.dataset.record || '';
     const revision = Number(button.dataset.revision) || 0;
-    try {
-      const receipt=await api('note_share', { operationId: uid(), projectId, profileId, recordId, expectedRevision: revision });
-      sharedNotes.add(recordId);
-      await loadComments();
-      writeNotice(receipt,'Nota compartilhada como comentário.');
-      pendingFocus = '[data-action="toggle-section"][data-section="comments"]';
-      render();
-    } catch (error) {
-      announce(`Não foi possível compartilhar a nota: ${messageOf(error)}`);
-    }
+    const key = ['share-note', recordId, String(revision)].join(':');
+    const operationId = writeOperation(key);
+    journalStatus = '';
+    await guardedWrite(key, async () => {
+      try {
+        const receipt = await api('note_share', { operationId, projectId, profileId, recordId, expectedRevision: revision });
+        if (receiptConfirmed(receipt, 'Nota compartilhada como comentário.', 'Compartilhamento salvo neste dispositivo; confirmação remota pendente.')) {
+          writeOps.delete(key);
+          sharedNotes.add(recordId);
+          await loadComments();
+          pendingFocus = '[data-action="toggle-section"][data-section="comments"]';
+        }
+        render();
+      } catch (error) {
+        discussionFailed(error, key, 'compartilhar a nota', 'Conflito ao compartilhar a nota: ela mudou em outro dispositivo. O rascunho da nota foi preservado; recarregue as notas e os comentários antes de tentar novamente.');
+      }
+    });
   }
 
   function writeFailed(error: unknown, key: string, what: string): void {
@@ -854,6 +932,15 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
     const message = conflict
       ? `Conflito ao ${what}: o registro mudou em outro dispositivo. Nada foi sobrescrito; recarregue o caderno antes de editar.`
       : `Não foi possível ${what}: ${messageOf(error)}`;
+    journalStatus = message;
+    announce(message);
+    if (active) render();
+  }
+
+  function discussionFailed(error: unknown, key: string, what: string, conflictMessage: string): void {
+    const conflict = statusOf(error) === 409;
+    if (conflict) writeOps.delete(key);
+    const message = conflict ? conflictMessage : `Não foi possível ${what}: ${messageOf(error)}`;
     journalStatus = message;
     announce(message);
     if (active) render();
@@ -966,49 +1053,130 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
   }
 
   async function saveObservation(): Promise<void> {
-    if (!selAnchor) { announce('Selecione um trecho da fonte antes de registrar a observação.'); return; }
+    const anchor = selAnchor;
+    if (!anchor) { announce('Selecione um trecho da fonte antes de registrar a observação.'); return; }
     const saveButton = rootEl.querySelector('[data-action="save-observation"]') as HTMLElement | null;
     const text = readField(saveButton || rootEl, 'observation-text');
     if (!text) { announce('Escreva a observação antes de registrar.'); return; }
-    try {
-      const receipt=await api('observation_add', { operationId: uid(), projectId, observationId: uid(), target: selAnchor, text });
-      await loadObservations();
-      openForm = null;
-      writeNotice(receipt,'Observação registrada.');
-      pendingFocus = '[data-action="capture-selection"]';
-      render();
-    } catch (error) { announce(`Não foi possível registrar a observação: ${messageOf(error)}`); }
+    const key = ['new-observation', anchorKey(anchor), contentKey(text)].join(':');
+    const operationId = writeOperation(key);
+    journalStatus = '';
+    await guardedWrite(key, async () => {
+      try {
+        const receipt = await api('observation_add', { operationId, projectId, profileId, observationId: operationId, target: anchor, text });
+        if (receiptConfirmed(receipt, 'Observação registrada.', 'Observação salva neste dispositivo; confirmação remota pendente.')) {
+          writeOps.delete(key);
+          await loadObservations();
+          openForm = null;
+          pendingFocus = '[data-action="capture-selection"]';
+        }
+        render();
+      } catch (error) {
+        discussionFailed(error, key, 'registrar a observação', 'Conflito ao registrar a observação: a passagem mudou. O rascunho foi preservado; recarregue as observações antes de tentar novamente.');
+      }
+    });
   }
 
   async function saveComment(): Promise<void> {
-    if (!selAnchor) { announce('Selecione um trecho da fonte antes de comentar.'); return; }
+    const anchor = selAnchor;
+    if (!anchor) { announce('Selecione um trecho da fonte antes de comentar.'); return; }
     const saveButton = rootEl.querySelector('[data-action="save-comment"]') as HTMLElement | null;
     const text = readField(saveButton || rootEl, 'comment-text');
     if (!text) { announce('Escreva o comentário antes de enviar.'); return; }
-    try {
-      const receipt=await api('comment_add', { operationId: uid(), projectId, commentId: uid(), target: selAnchor, text, replyTo: null });
-      await loadComments();
-      openForm = null;
-      writeNotice(receipt,'Comentário enviado.');
-      pendingFocus = '[data-action="capture-selection"]';
-      render();
-    } catch (error) { announce(`Não foi possível enviar o comentário: ${messageOf(error)}`); }
+    const key = ['new-comment', anchorKey(anchor), contentKey(text)].join(':');
+    const operationId = writeOperation(key);
+    journalStatus = '';
+    await guardedWrite(key, async () => {
+      try {
+        const receipt = await api('comment_add', { operationId, projectId, profileId, commentId: operationId, target: anchor, text, replyTo: null });
+        if (receiptConfirmed(receipt, 'Comentário enviado.', 'Comentário salvo neste dispositivo; confirmação remota pendente.')) {
+          writeOps.delete(key);
+          await loadComments();
+          openForm = null;
+          pendingFocus = '[data-action="capture-selection"]';
+        }
+        render();
+      } catch (error) {
+        discussionFailed(error, key, 'enviar o comentário', 'Conflito ao enviar o comentário: a conversa mudou em outro dispositivo. O rascunho foi preservado; recarregue os comentários antes de tentar novamente.');
+      }
+    });
   }
 
   async function saveReply(button: HTMLElement): Promise<void> {
-    const parent = comments.find(c => c.id === button.dataset.comment);
+    const parentId = button.dataset.comment || '';
+    const parent = comments.find(c => c.id === parentId);
     const target = targetOf(parent?.target);
-    if (!parent || !target) { announce('Comentário de origem indisponível.'); return; }
-    const text = readField(button, 'reply-text');
+    if (!parent || parent.deleted_at) { announce('Comentário removido não aceita resposta.'); return; }
+    if (!target) { announce('Comentário de origem indisponível.'); return; }
+    const text = readField(button, `reply-text-${parent.id}`);
     if (!text) { announce('Escreva a resposta antes de enviar.'); return; }
-    try {
-      const receipt=await api('comment_add', { operationId: uid(), projectId, commentId: uid(), target, text, replyTo: parent.id });
-      await loadComments();
-      replyTo = null;
-      writeNotice(receipt,'Resposta enviada.');
-      pendingFocus = `[data-action="reply-comment"][data-comment="${parent.id}"]`;
-      render();
-    } catch (error) { announce(`Não foi possível responder: ${messageOf(error)}`); }
+    const key = ['reply-comment', parent.id, anchorKey(target), contentKey(text)].join(':');
+    const operationId = writeOperation(key);
+    journalStatus = '';
+    await guardedWrite(key, async () => {
+      try {
+        const receipt = await api('comment_add', { operationId, projectId, profileId, commentId: operationId, target, text, replyTo: parent.id });
+        if (receiptConfirmed(receipt, 'Resposta enviada.', 'Resposta salva neste dispositivo; confirmação remota pendente.')) {
+          writeOps.delete(key);
+          await loadComments();
+          replyTo = null;
+          pendingFocus = `[data-action="reply-comment"][data-comment="${parent.id}"]`;
+        }
+        render();
+      } catch (error) {
+        discussionFailed(error, key, 'responder', 'Conflito ao responder: a conversa mudou em outro dispositivo. O rascunho foi preservado; recarregue os comentários antes de tentar novamente.');
+      }
+    });
+  }
+
+  async function saveCommentEdit(button: HTMLElement): Promise<void> {
+    const commentId = button.dataset.comment || '';
+    const item = comments.find(c => c.id === commentId);
+    if (!item || item.deleted_at || item.origin_profile_id !== profileId) { announce('Comentário indisponível para edição.'); return; }
+    const text = readField(button, `edit-comment-text-${item.id}`);
+    if (!text) { announce('Escreva o texto antes de salvar.'); return; }
+    const expectedRevision = Number(item.revision) || 0;
+    const key = ['edit-comment', item.id, String(expectedRevision), contentKey(text)].join(':');
+    const operationId = writeOperation(key);
+    journalStatus = '';
+    await guardedWrite(key, async () => {
+      try {
+        const receipt = await api('comment_edit', { operationId, projectId, commentId: item.id, expectedRevision, text });
+        if (receiptConfirmed(receipt, 'Comentário atualizado.', 'Edição salva neste dispositivo; confirmação remota pendente.')) {
+          writeOps.delete(key);
+          editingCommentId = null;
+          await loadComments();
+          pendingFocus = `[data-action="edit-comment"][data-comment="${item.id}"]`;
+        }
+        render();
+      } catch (error) {
+        discussionFailed(error, key, 'editar o comentário', 'Conflito ao editar o comentário: ele mudou em outro dispositivo. O rascunho foi preservado; recarregue os comentários antes de tentar novamente.');
+      }
+    });
+  }
+
+  async function removeComment(button: HTMLElement): Promise<void> {
+    const commentId = button.dataset.comment || '';
+    const item = comments.find(c => c.id === commentId);
+    if (!item || item.deleted_at || item.origin_profile_id !== profileId) { announce('Comentário indisponível para exclusão.'); return; }
+    const expectedRevision = Number(item.revision) || 0;
+    const key = ['remove-comment', item.id, String(expectedRevision)].join(':');
+    const operationId = writeOperation(key);
+    journalStatus = '';
+    await guardedWrite(key, async () => {
+      try {
+        const receipt = await api('comment_remove', { operationId, projectId, commentId: item.id, expectedRevision });
+        if (receiptConfirmed(receipt, 'Comentário excluído. As respostas de outras pessoas foram preservadas.', 'Exclusão salva neste dispositivo; confirmação remota pendente.')) {
+          writeOps.delete(key);
+          confirmRemoveComment = null;
+          await loadComments();
+          pendingFocus = '[data-action="toggle-section"][data-section="comments"]';
+        }
+        render();
+      } catch (error) {
+        discussionFailed(error, key, 'excluir o comentário', 'Conflito ao excluir o comentário: ele mudou em outro dispositivo. Nada foi sobrescrito; recarregue os comentários antes de tentar novamente.');
+      }
+    });
   }
 
   function blockElement(node: Node | null): HTMLElement | null {
@@ -1404,9 +1572,10 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
       if (!group) { group = { target, items: [] }; groups.set(key, group); }
       group.items.push(item);
     }
+    const reload = `<div class="button-row">${iconButton('rotate', 'Recarregar observações', 'reload-observations')}</div>`;
     const content = groups.size ? [...groups.values()].map(group => {
       const observationsHtml = group.items.map(item => {
-        const author = item.authorId || item.author_id || item.account_id || 'Autoria não informada';
+        const author = authorLabel(item, 'Participante');
         const status = OBSERVATION_STATUS[item.status] || item.status || 'Estado não informado';
         return `<article class="observation-item">
           <div class="record-head"><h4>${h(author)}</h4><span class="badge">${h(status)}</span></div>
@@ -1419,35 +1588,116 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
         <div class="record-head"><h3>${target ? 'Passagem' : 'Sem alvo declarado'}</h3><span class="badge">${group.items.length} observação(ões)</span></div>
         ${target ? `<p class="quote" dir="auto">${h(target.exact)}</p>
           <p class="meta-line">${h(metaFor(target.sourceId,target.sourceRevision).title)} · ${h(target.locator||"Passagem selecionada")}</p>
-          <button type="button" class="control" data-action="open-record-source" data-anchor="${anchorRef(target)}">Ver no contexto</button>` : '<p class="muted">O registro não declara alvo; não foi agrupado por similaridade.</p>'}
+          <div class="button-row">${iconButton('reposition', 'Ver no contexto', 'open-record-source', `data-anchor="${anchorRef(target)}"`)}</div>` : '<p class="muted">O registro não declara alvo; não foi agrupado por similaridade.</p>'}
         ${observationsHtml}
       </article>`;
     }).join('') : `<p class="muted">${recordErrors.get('observations') ? `Observações indisponíveis: ${h(recordErrors.get('observations'))}` : 'Nenhuma observação registrada.'}</p>`;
-    return sectionWrap('observations', 'Observações', observations.length, `<p class="muted">${observations.length} observações em ${groups.size} passagens.</p>${content}`);
+    const warning = recordErrors.get('observations') && observations.length ? `<p class="warning">Leitura parcial: ${h(recordErrors.get('observations'))}</p>` : '';
+    return sectionWrap('observations', 'Observações', observations.length, `<p class="muted">${observations.length} observações em ${groups.size} passagens.</p>${reload}${content}${warning}`);
   }
 
   function renderCommentsSection(): string {
-    const parents = comments.filter(c => !c.reply_to);
-    const replies = comments.filter(c => c.reply_to);
-    const block = (comment: any, depth: number): string => {
+    const byId = new Map<string, any>();
+    const ordered: any[] = [];
+    for (const comment of comments) {
+      if (!comment || typeof comment.id !== 'string' || byId.has(comment.id)) continue;
+      byId.set(comment.id, comment);
+      ordered.push(comment);
+    }
+    const parentOf = new Map<string, string>();
+    for (const comment of ordered) {
+      const parentId = typeof comment.reply_to === 'string' ? comment.reply_to : '';
+      if (parentId && parentId !== comment.id && byId.has(parentId)) parentOf.set(comment.id, parentId);
+    }
+    for (const comment of ordered) {
+      const seen = new Set<string>([comment.id]);
+      let parentId = parentOf.get(comment.id);
+      while (parentId) {
+        if (seen.has(parentId)) { parentOf.delete(comment.id); break; }
+        seen.add(parentId);
+        parentId = parentOf.get(parentId);
+      }
+    }
+    const children = new Map<string, any[]>();
+    for (const comment of ordered) {
+      const parentId = parentOf.get(comment.id);
+      if (!parentId) continue;
+      const list = children.get(parentId) || [];
+      list.push(comment);
+      children.set(parentId, list);
+    }
+    const roots = ordered.filter(comment => !parentOf.has(comment.id));
+
+    const renderOne = (comment: any, depth: number): string => {
       const target = targetOf(comment.target);
-      const children = replies.filter(reply => reply.reply_to === comment.id);
-      return `<article class="comment ${depth ? 'comment-reply' : ''}">
-        <div class="record-head"><h3>${h(comment.account_id || comment.author_id || comment.authorId || 'Autor não informado')}</h3>${target?.exact ? '<span class="badge">Passagem</span>' : ''}</div>
-        ${target?.exact ? `<p class="quote">${h(target.exact)}</p>` : ''}
-        <p class="record-text" dir="auto">${h(comment.text || '')}</p>
-        <button type="button" class="control" data-action="reply-comment" data-comment="${h(comment.id)}" aria-expanded="${replyTo === comment.id}">Responder</button>
-        ${replyTo === comment.id ? `<div class="reply-form" data-form-block>
-          <label class="field-label" for="reply-text-${h(comment.id)}">Resposta</label>
-          <textarea id="reply-text-${h(comment.id)}" class="field-input" data-field="reply-text" rows="3"></textarea>
-          <button type="button" class="control" data-action="save-reply" data-comment="${h(comment.id)}">Enviar resposta</button>
-        </div>` : ''}
-        ${children.map(child => block(child, depth + 1)).join('')}
+      const deleted = Boolean(comment.deleted_at);
+      const mine = comment.origin_profile_id === profileId;
+      const author = deleted ? 'Comentário removido' : authorLabel(comment, 'Participante');
+      const editing = !deleted && mine && editingCommentId === comment.id;
+      const removing = !deleted && mine && confirmRemoveComment === comment.id;
+      const actions: string[] = [];
+      if (!deleted) {
+        if (mine) actions.push(iconButton('edit', 'Editar comentário', 'edit-comment', `data-comment="${h(comment.id)}"`));
+        if (mine) actions.push(iconButton('trash', 'Excluir comentário', 'ask-delete-comment', `data-comment="${h(comment.id)}"`));
+        actions.push(iconButton('prompt', 'Responder comentário', 'reply-comment', `data-comment="${h(comment.id)}" aria-expanded="${replyTo === comment.id}"`));
+      }
+      const body = editing
+        ? `<div class="edit-form" data-form-block>
+            <label class="field-label" for="edit-comment-${h(comment.id)}">Editar comentário</label>
+            <textarea id="edit-comment-${h(comment.id)}" class="field-input" data-field="edit-comment-text-${h(comment.id)}" rows="3">${h(comment.text || '')}</textarea>
+            <div class="button-row">
+              ${iconButton('save', 'Salvar comentário', 'save-comment-edit', `data-comment="${h(comment.id)}"`)}
+              ${iconButton('remove-state', 'Cancelar edição', 'cancel-comment-edit', `data-comment="${h(comment.id)}"`)}
+            </div>
+          </div>`
+        : `<p class="record-text" dir="auto">${h(deleted ? 'Conteúdo removido pelo titular. As respostas de outras pessoas foram preservadas.' : comment.text || '')}</p>`;
+      const removeBox = removing
+        ? `<div class="warning" role="alert">
+            <p>Excluir este comentário? O texto será removido; as respostas de outras pessoas serão preservadas.</p>
+            <div class="button-row">
+              ${iconButton('trash', 'Confirmar exclusão do comentário', 'confirm-delete-comment', `data-comment="${h(comment.id)}"`)}
+              ${iconButton('remove-state', 'Cancelar exclusão', 'cancel-delete-comment', `data-comment="${h(comment.id)}"`)}
+            </div>
+          </div>` : '';
+      const replyForm = replyTo === comment.id && !deleted
+        ? `<div class="reply-form" data-form-block>
+            <label class="field-label" for="reply-text-${h(comment.id)}">Resposta a ${h(author)}</label>
+            <textarea id="reply-text-${h(comment.id)}" class="field-input" data-field="reply-text-${h(comment.id)}" rows="3"></textarea>
+            <div class="button-row">${iconButton('save', 'Enviar resposta', 'save-reply', `data-comment="${h(comment.id)}"`)}</div>
+          </div>` : '';
+      const depthStyle = depth ? ` style="--comment-depth:${Math.min(depth, 4)}"` : '';
+      return `<article class="comment ${depth ? 'comment-reply' : ''}${deleted ? ' comment-tombstone' : ''}"${depthStyle} data-comment-id="${h(comment.id)}">
+        <div class="record-head"><h3>${h(author)}</h3>${target?.exact ? '<span class="badge">Passagem</span>' : ''}</div>
+        ${target?.exact ? `<p class="quote" dir="auto">${h(target.exact)}</p>` : ''}
+        ${body}
+        ${removeBox}
+        ${actions.length ? `<div class="button-row">${actions.join('')}</div>` : ''}
+        ${replyForm}
       </article>`;
     };
-    const content = parents.length ? parents.map(comment => block(comment, 0)).join('')
+
+    const html: string[] = [];
+    const visited = new Set<string>();
+    const stack: { item: any; depth: number }[] = [];
+    for (let i = roots.length - 1; i >= 0; i -= 1) stack.push({ item: roots[i], depth: 0 });
+    while (stack.length) {
+      const current = stack.pop()!;
+      if (visited.has(current.item.id)) continue;
+      visited.add(current.item.id);
+      html.push(renderOne(current.item, current.depth));
+      const kids = children.get(current.item.id) || [];
+      for (let i = kids.length - 1; i >= 0; i -= 1) stack.push({ item: kids[i], depth: current.depth + 1 });
+    }
+    for (const comment of ordered) {
+      if (!visited.has(comment.id)) html.push(renderOne(comment, 0));
+    }
+
+    const reload = `<div class="button-row">${iconButton('rotate', 'Recarregar comentários', 'reload-comments')}</div>`;
+    const list = html.length
+      ? html.join('')
       : `<p class="muted">${recordErrors.get('comments') ? `Comentários indisponíveis: ${h(recordErrors.get('comments'))}` : 'Nenhum comentário.'}</p>`;
-    return sectionWrap('comments', 'Comentários', parents.length, content);
+    const warning = recordErrors.get('comments') && comments.length ? `<p class="warning">Leitura parcial: ${h(recordErrors.get('comments'))}</p>` : '';
+    return sectionWrap('comments', 'Comentários', comments.length, `<p class="muted">${comments.length} comentário(s) em ${roots.length} conversa(s).</p>${reload}${list}${warning}`);
   }
 
   function renderResourceTab(tab: ReaderTab): string {
@@ -1593,8 +1843,8 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
     let form = '';
     if (openForm === 'note') form = formBlock('Nota privada', `<label class="field-label" for="note-text">Texto da nota</label><textarea id="note-text" class="field-input" data-field="note-text" rows="4"></textarea><button type="button" class="control" data-action="save-note">Salvar nota</button>`);
     if (openForm === 'term') form = formBlock('Vocabulário', `<label class="field-label" for="term-field">Termo</label><input id="term-field" class="field-input" data-field="term"><label class="field-label" for="definition-field">Definição</label><textarea id="definition-field" class="field-input" data-field="definition" rows="4"></textarea><button type="button" class="control" data-action="save-term">Salvar vocabulário</button>`);
-    if (openForm === 'observation') form = formBlock('Observação', `<label class="field-label" for="observation-text">Observação</label><textarea id="observation-text" class="field-input" data-field="observation-text" rows="4"></textarea><button type="button" class="control" data-action="save-observation">Registrar observação</button>`);
-    if (openForm === 'comment') form = formBlock('Comentário', `<label class="field-label" for="comment-text">Comentário</label><textarea id="comment-text" class="field-input" data-field="comment-text" rows="4"></textarea><button type="button" class="control" data-action="save-comment">Enviar comentário</button>`);
+    if (openForm === 'observation') form = formBlock('Observação', `<label class="field-label" for="observation-text">Observação</label><textarea id="observation-text" class="field-input" data-field="observation-text" rows="4"></textarea><div class="button-row">${iconButton('review', 'Registrar observação', 'save-observation')}</div>`);
+    if (openForm === 'comment') form = formBlock('Comentário', `<label class="field-label" for="comment-text">Comentário</label><textarea id="comment-text" class="field-input" data-field="comment-text" rows="4"></textarea><div class="button-row">${iconButton('prompt', 'Enviar comentário', 'save-comment')}</div>`);
     return `<section class="selection-panel" aria-labelledby="selection-title">
       <div class="section-head"><h3 id="selection-title">Seleção</h3><span class="badge">${selAnchor.exact.length} caractere(s)</span></div>
       <p class="quote" dir="auto">${h(selAnchor.exact)}</p>
@@ -1682,12 +1932,60 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
       case 'save-comment': await saveComment(); return;
       case 'reply-comment': {
         const id = button.dataset.comment || '';
+        const comment = comments.find(c => c.id === id);
+        if (!comment || comment.deleted_at) { announce('Comentário removido não aceita resposta.'); return; }
         replyTo = replyTo === id ? null : id;
-        pendingFocus = `[data-field="reply-text"]`;
+        pendingFocus = replyTo ? `[data-field="reply-text-${id}"]` : `[data-action="reply-comment"][data-comment="${id}"]`;
         render();
         return;
       }
       case 'save-reply': await saveReply(button); return;
+      case 'reload-comments':
+        await loadComments();
+        pendingFocus = '[data-action="reload-comments"]';
+        render();
+        return;
+      case 'reload-observations':
+        await loadObservations();
+        pendingFocus = '[data-action="reload-observations"]';
+        render();
+        return;
+      case 'edit-comment': {
+        const id = button.dataset.comment || '';
+        const comment = comments.find(c => c.id === id);
+        if (!comment || comment.deleted_at || comment.origin_profile_id !== profileId) { announce('Comentário indisponível para edição.'); return; }
+        editingCommentId = id;
+        confirmRemoveComment = null;
+        pendingFocus = `[data-field="edit-comment-text-${id}"]`;
+        render();
+        return;
+      }
+      case 'cancel-comment-edit': {
+        const id = button.dataset.comment || '';
+        editingCommentId = null;
+        pendingFocus = `[data-action="edit-comment"][data-comment="${id}"]`;
+        render();
+        return;
+      }
+      case 'save-comment-edit': await saveCommentEdit(button); return;
+      case 'ask-delete-comment': {
+        const id = button.dataset.comment || '';
+        const comment = comments.find(c => c.id === id);
+        if (!comment || comment.deleted_at || comment.origin_profile_id !== profileId) { announce('Comentário indisponível para exclusão.'); return; }
+        confirmRemoveComment = id;
+        editingCommentId = null;
+        pendingFocus = `[data-action="confirm-delete-comment"][data-comment="${id}"]`;
+        render();
+        return;
+      }
+      case 'cancel-delete-comment': {
+        const id = button.dataset.comment || '';
+        confirmRemoveComment = null;
+        pendingFocus = `[data-action="ask-delete-comment"][data-comment="${id}"]`;
+        render();
+        return;
+      }
+      case 'confirm-delete-comment': await removeComment(button); return;
       case 'open-edition': {
         const anchor = uiAnchors.get(button.dataset.anchor || '');
         if (!anchor) { announce('Alvo de edição indisponível.'); return; }

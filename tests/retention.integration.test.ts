@@ -1,7 +1,7 @@
 import {test,after} from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID as uuid} from 'node:crypto';
-import {access,rename,mkdir,rmdir,readFile} from 'node:fs/promises';
+import {access,rename,mkdir,rmdir,readFile,utimes,rm} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {localContext} from './local-context.ts';
 import {execute} from '../src/service.ts';
@@ -20,6 +20,25 @@ test('exclusão pessoal nega acesso imediatamente e retoma remoção física sem
  await transaction(author,async db=>{await fileRow(db,author,personal,{projectId,profileId},true);await fileRow(db,author,common,{projectId},true);});
  await assert.rejects(transaction(author,db=>db.query('insert into um.files(path,owner_id,sha256,bytes,media_type,offline_allowed,state) values($1,$2,$3,1,$4,true,$5)',[`${stranger.id}/${uuid()}`,author.id,'fake','text/plain','prepared'])),(e:any)=>e.code==='23514');
  assert.match((await getFile(holder,personal.path)).toString(),/Derivado/);
+ const exported=await call(holder,'profile_export',{profileId});assert.equal(exported.format,'um-personal-export/2');assert.equal(exported.sections.find((s:any)=>s.name==='files').total,1);
+ const exportedPage=await call(holder,'profile_export_page',{profileId,section:'files',limit:1});assert.equal(exportedPage.items[0].path,personal.path);
+ const exportedBytes=await call(holder,'profile_export_file',{profileId,path:personal.path});assert.equal(Buffer.from(exportedBytes.content,'base64').toString(),'Derivado pessoal sintético');
+ await assert.rejects(call(author,'profile_export_file',{profileId,path:personal.path}),/titular/);await assert.rejects(call(stranger,'profile_export_page',{profileId,section:'files'}),/indisponível/);await assert.rejects(call(holder,'profile_export_file',{profileId,path:common.path}),/indisponível/);
+ await transaction(author,db=>db.query('update um.files set offline_allowed=false where path=$1',[personal.path]));await assert.rejects(call(holder,'profile_export_file',{profileId,path:personal.path}),/direitos/);
+ assert.notEqual((await call(holder,'profile_export',{profileId})).snapshot,exported.snapshot);
+ await transaction(author,db=>db.query('update um.files set offline_allowed=true where path=$1',[personal.path]));
+ // A rolled-back SQL transaction must not strand an uploaded object forever.
+ const orphan=await putFile(author,Buffer.from('Upload cuja publicação falhou'),'text/plain'),recent=await putFile(author,Buffer.from('Upload ainda em preparação'),'text/plain');
+ await assert.rejects(transaction(author,async db=>{await fileRow(db,author,orphan,{projectId},true);throw Error('rollback injected');}),/rollback injected/);
+ const old=new Date(Date.now()-2*86400000);for(const file of [orphan,personal,common])await utimes(resolve('.local/blobs',file.path),old,old);
+ await call(holder,'profile_control',{operationId:uuid(),profileId,action:'revoke_creator'});
+ assert.equal((await transaction(author,db=>db.query('select path from um.files where path=$1',[personal.path]))).rowCount,0);
+ let cursor='',queued=0;do{const scan=(await call(author,'data_orphan_scan',{operationId:uuid(),after:cursor,limit:2})).result;queued+=scan.enqueued;cursor=scan.next||'';}while(cursor);
+ assert.equal(queued,1);await access(resolve('.local/blobs',personal.path));await access(resolve('.local/blobs',common.path));await access(resolve('.local/blobs',recent.path));
+ await assert.rejects(transaction(stranger,db=>db.query('select um.enqueue_orphan_file($1)',[orphan.path])),/FORBIDDEN/);
+ await assert.rejects(transaction(author,db=>fileRow(db,author,orphan,{projectId},true)),/FILE_REMOVAL_PENDING/);
+ assert.equal((await call(author,'data_cleanup',{operationId:uuid()})).result.removed,1);await assert.rejects(access(resolve('.local/blobs',orphan.path)),(e:any)=>e.code==='ENOENT');
+ await rm(resolve('.local/blobs',recent.path));
  const deletion={operationId:uuid(),profileId,action:'delete'},deleted=await call(holder,'profile_control',deletion);
  assert.deepEqual(await call(holder,'profile_control',deletion),deleted);
  assert.equal((await call(holder,'operation_get',{operationId:deletion.operationId})).result.action,'delete');

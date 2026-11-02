@@ -36,8 +36,22 @@ async function account(root:HTMLElement){
  dispose=await mountProfiles(root,{accountId:session.user.id,api:remote,onInvalidated:async id=>{
   let deleted=false;try{await remote('profile_get',{profileId:id});}catch(e){if((e as any)?.status===404)deleted=true;else throw e;}
   await (await client()).store.clear();
-  if(deleted){for(const [key,c]of clients)if(key.split(':')[1]===id){await c.store.clear();c.close();clients.delete(key);}if(profileId===id)profileId=null;await remote('data_cleanup',{operationId:crypto.randomUUID(),limit:30});await refreshDeletionStatus(root);}
+  if(deleted){for(const [key,c]of clients)if(key.split(':')[1]===id){await c.store.clear();c.close();clients.delete(key);}if(profileId===id)profileId=null;await cleanupData();await refreshDeletionStatus(root);}
  }});
+}
+let cleanupRunning:Promise<void>|null=null;
+const cleanupCursor=new Map<string,string>();
+async function cleanupData(){
+ if(cleanupRunning)return cleanupRunning;const owner=session?.user.id;if(!owner)return;
+ cleanupRunning=(async()=>{
+  // Bounded discovery advances by path, so removed files cannot shift a cursor.
+  for(let page=0;page<10&&session?.user.id===owner;page++){
+   const response=await remote('data_orphan_scan',{operationId:crypto.randomUUID(),after:cleanupCursor.get(owner)||'',limit:100}) as any;
+   if(response.status!=='confirmed')return;
+   cleanupCursor.set(owner,response.result.next||'');if(!response.result.next)break;
+  }
+  while(session?.user.id===owner){const response=await remote('data_cleanup',{operationId:crypto.randomUUID(),limit:100}) as any;if(response.status!=='confirmed'||!response.result.pending||!response.result.removed)break;}
+ })().finally(()=>{cleanupRunning=null;});return cleanupRunning;
 }
 async function refreshDeletionStatus(root:HTMLElement){const target=root.querySelector('#data-status');if(!target)return;try{const status=await remote('data_status',{});target.textContent=status.pending?`${status.pending} arquivos aguardam remoção. O acesso a eles já foi retirado.`:'Nenhuma remoção de arquivo pendente nesta conta.';}catch{target.textContent='Conecte-se para conferir a remoção dos arquivos.';}}
 async function explore(root:HTMLElement){root.innerHTML='<h1>Explorar</h1>';dispose=await mountExplore(root,api);}
@@ -45,7 +59,7 @@ app.addEventListener('click',async e=>{const button=(e.target as Element).closes
  if(['home','account','explore'].includes(action!))await show(action!);
  if(action==='theme'){theme=theme==='system'?'light':theme==='light'?'dark':'system';localStorage.setItem('um-theme',theme);setTheme();await show('account');}
  if(action==='accept-invite'){await remote('invite_accept',{operationId:crypto.randomUUID(),token:(root.querySelector('#invite') as HTMLInputElement).value.trim()});history.replaceState(null,'',location.pathname);announce('Convite aceito.');await show('home');}
- if(action==='data-cleanup'){button.disabled=true;try{await remote('data_cleanup',{operationId:crypto.randomUUID(),limit:30});await refreshDeletionStatus(root);}finally{button.disabled=false;}}
+ if(action==='data-cleanup'){button.disabled=true;try{await cleanupData();await refreshDeletionStatus(root);}finally{button.disabled=false;}}
  if(action==='revoke'){await remote('account_grant_set',{operationId:crypto.randomUUID(),clientId:button.dataset.client,permission:'revoke'});await show('account');}
  if(action==='logout'){const accountId=session!.user.id;dispose?.();dispose=undefined;profileId=null;const signedOut=await auth.signOut({scope:'local'});session=null;await clearAccount(accountId);for(const c of clients.values())c.close();clients.clear();activeClient=null;await show('account');if(signedOut.error)announce('Dados locais removidos. A revogação da sessão no serviço ainda não foi confirmada.');}
  if(action==='sync'){if(activeClient)try{await activeClient.sync();}catch(e){announce((e as Error).message);}const operations=activeClient?await activeClient.store.operations():[];root.insertAdjacentHTML('afterbegin',`<section class="card" id="sync-status"><h2>Conexão e dados locais</h2><p>${navigator.onLine?'Conectado':'Sem conexão'}</p><p class="muted">${operations.filter(o=>o.state!=='confirmed').length} operações aguardam confirmação ou revisão.</p>${activeClient?iconButton('offline','Preparar este estudo para uso offline','prepare-offline'):''}${operations.filter(o=>o.state!=='confirmed').map(o=>`<p>${esc(o.state)} · ${esc(o.error||'Aguardando conexão')}</p>`).join('')}</section>`);}
@@ -56,5 +70,5 @@ app.addEventListener('click',async e=>{const button=(e.target as Element).closes
 auth.onAuthStateChange((event,next)=>{const changed=session?.user.id!==next?.user.id;session=next;if(changed||event==='SIGNED_OUT')setTimeout(()=>void show('home'),0);});
 session=(await auth.getSession()).data.session;await show(location.hash.includes('invite=')?'account':'home');
 if(import.meta.env.PROD&&location.hostname!=='appassets.androidplatform.net'&&'serviceWorker'in navigator)void navigator.serviceWorker.register(new URL('sw.js',document.baseURI)).catch(()=>announce('A aplicação ainda não está preparada para reabrir sem conexão.'));
-window.addEventListener('online',()=>{if(session)void remote('data_cleanup',{operationId:crypto.randomUUID(),limit:30}).catch(()=>{});for(const c of clients.values())void c.sync().catch(()=>{});});
+window.addEventListener('online',()=>{if(session)void cleanupData().catch(()=>{});for(const c of clients.values())void c.sync().catch(()=>{});});
 (window as any).UmAndroid={flush:()=>{window.dispatchEvent(new Event('um-flush'));},back:()=>{if(screen!=='home'||activeClient){void show('home');activeClient=null;return true;}return false;}};

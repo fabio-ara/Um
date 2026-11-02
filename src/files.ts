@@ -1,5 +1,5 @@
 import {createHash,randomUUID} from 'node:crypto';
-import {mkdir,readFile,writeFile,rename,rm} from 'node:fs/promises';
+import {mkdir,readFile,writeFile,rename,rm,readdir,lstat} from 'node:fs/promises';
 import {resolve,dirname,sep} from 'node:path';
 import {createClient} from '@supabase/supabase-js';
 import {z} from 'zod';
@@ -47,4 +47,20 @@ export async function deleteQueuedFile(identity:Identity,path:string):Promise<vo
  if(config.local)await rm(localPath(path),{force:true});
  else{const {error}=await storage(identity).remove([path]);ensure(!error,'STORAGE','Remoção de arquivo ainda não confirmada.',503);}
  await transaction(identity,db=>db.query('update um.file_deletions set completed_at=now() where path=$1 and completed_at is null',[path]));
+}
+/** Only old files in this account's namespace are considered; registration is
+ * checked globally under a SQL lock, never inferred from an RLS-filtered list. */
+export async function scanAbandonedFiles(identity:Identity,after:string,limit:number){
+ let paths:string[]=[];
+ if(config.local){
+  const directory=dirname(localPath(`${identity.id}/00000000-0000-0000-0000-000000000000`));
+  let entries;try{entries=await readdir(directory,{withFileTypes:true});}catch(e){if((e as NodeJS.ErrnoException).code==='ENOENT')return {scanned:0,enqueued:0,next:null};throw e;}
+  paths=entries.filter(e=>e.isFile()&&/^[a-f0-9-]{36}$/.test(e.name)).map(e=>`${identity.id}/${e.name}`).filter(p=>p>after).sort().slice(0,limit);
+ }else paths=(await transaction(identity,db=>db.query('select path from um.orphan_candidates($1,$2)',[after,limit]))).rows.map(r=>r.path);
+ let enqueued=0;
+ for(const path of paths){
+  if(config.local){let stat;try{stat=await lstat(localPath(path));}catch(e){if((e as NodeJS.ErrnoException).code==='ENOENT')continue;throw e;}if(!stat.isFile()||stat.mtimeMs>Date.now()-86400000)continue;}
+  if((await transaction(identity,db=>db.query('select um.enqueue_orphan_file($1) as queued',[path]))).rows[0].queued)enqueued++;
+ }
+ return {scanned:paths.length,enqueued,next:paths.length===limit?paths.at(-1)!:null};
 }

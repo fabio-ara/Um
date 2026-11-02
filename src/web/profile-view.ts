@@ -119,6 +119,9 @@ export async function mountProfiles(root: HTMLElement, options: ProfileViewOptio
   const byRef = new Map<string, Profile>();
   const drafts = new Map<string, Record<string, string>>();
   const exportJson = new Map<string, string>();
+  const exportManifests = new Map<string, JsonObject>();
+  const exportFiles = new Map<string, JsonObject[]>();
+  const exportSelections = new Map<string,{section:string;page:number}>();
   const exportErrors = new Map<string, string>();
   const cardErrors = new Map<string, string>();
   const operationIds = new Map<string, string>();
@@ -302,7 +305,11 @@ export async function mountProfiles(root: HTMLElement, options: ProfileViewOptio
       </div>`;
     }
     return `<div class="profile-export" role="region" aria-label="Exportação JSON deste perfil">
-      <p class="muted">Somente este perfil. Inclui os dados pessoais vinculados a este perfil.</p>
+      <p class="muted">Exportação em partes de até 100 itens. O índice informa todas as partes; os arquivos preparados podem ter restrições de cópia. Se os dados mudarem, reinicie a exportação.</p>
+      <label class="field">Parte<select data-export-section>${(exportManifests.get(profile.id)?.sections||[]).map((s:any)=>`<option value="${esc(s.name)}" ${exportSelections.get(profile.id)?.section===s.name?'selected':''}>${esc(({participations:'Estudos associados',forms:'Formulários',formHistory:'Versões de formulários',submissions:'Respostas enviadas',records:'Notas, práticas e estado',bundles:'Apoios preparados',reasons:'Justificativas',comments:'Comentários compartilhados',observations:'Observações',files:'Arquivos'} as Record<string,string>)[s.name]||s.name)} · ${s.total} itens</option>`).join('')}</select></label>
+      <label class="field">Página<input data-export-page type="number" min="1" value="${exportSelections.get(profile.id)?.page||1}" step="1"></label>
+      ${iconButton('book-open','Exibir parte da exportação','profile-export-page',`data-profile="${ref}"`)}
+      ${(exportFiles.get(profile.id)||[]).map((f,i)=>`<p>Arquivo ${i+1} · ${esc(f.media_type)} · ${esc(f.bytes)} bytes${f.offline_allowed?iconButton('book-open',`Exibir conteúdo do arquivo ${i+1}`,'profile-export-file',`data-profile="${ref}" data-file-index="${i}"`):' · cópia não autorizada pelos direitos registrados'}</p>`).join('')}
       <textarea readonly rows="16" aria-label="Conteúdo JSON da exportação deste perfil">${esc(json)}</textarea>
       <div class="profile-form-actions">
         <button type="button" class="profile-button primary" data-action="profile-copy" data-profile="${ref}">Copiar JSON</button>
@@ -562,7 +569,7 @@ export async function mountProfiles(root: HTMLElement, options: ProfileViewOptio
 
   const openExport = async (profile: Profile, button: HTMLButtonElement) => {
     const ref = refFor(profile.id);
-    if (exportRef === ref && exportJson.has(profile.id)) {
+    if (exportRef === ref && exportJson.has(profile.id) && !exportErrors.has(profile.id)) {
       exportRef = null;
       render();
       focusAction('profile-export', ref);
@@ -586,6 +593,7 @@ export async function mountProfiles(root: HTMLElement, options: ProfileViewOptio
       const content = await options.api('profile_export', {profileId: profile.id});
       if (controller.signal.aborted) return;
       if (!isObject(content)) throw new Error('O serviço não retornou a exportação deste perfil.');
+      exportManifests.set(profile.id,content);
       let json: string;
       try {
         json = JSON.stringify(content, null, 2);
@@ -605,6 +613,19 @@ export async function mountProfiles(root: HTMLElement, options: ProfileViewOptio
       render();
       focusAction('profile-export', ref);
     }
+  };
+
+  const exportPart=async(profile:Profile,button:HTMLButtonElement,fileIndex?:number)=>{
+    const card=button.closest('.profile-card')!,manifest=exportManifests.get(profile.id);
+    if(!manifest||!beginBusy('export-part:'+profile.id,button))return;
+    try{
+      let part:JsonObject;
+      if(fileIndex!==undefined){const file=exportFiles.get(profile.id)?.[fileIndex];if(!file)throw Error('Arquivo não selecionado.');part=await options.api('profile_export_file',{profileId:profile.id,path:file.path});}
+      else{const section=(card.querySelector('[data-export-section]') as HTMLSelectElement).value,page=Number((card.querySelector('[data-export-page]') as HTMLInputElement).value);const total=manifest.sections.find((s:any)=>s.name===section)?.total;if(!Number.isSafeInteger(page)||page<1||page>Math.max(1,Math.ceil(total/100)))throw Error('Página fora do intervalo desta parte.');exportSelections.set(profile.id,{section,page});part=await options.api('profile_export_page',{profileId:profile.id,section,offset:(page-1)*100,limit:100});exportFiles.set(profile.id,section==='files'?part.items:[]);}
+      const current=await options.api('profile_export',{profileId:profile.id});if(current.snapshot!==manifest.snapshot){exportJson.delete(profile.id);exportManifests.delete(profile.id);exportFiles.delete(profile.id);throw Error('Os dados mudaram durante a exportação. Feche e abra a exportação para obter um novo índice.');}
+      exportJson.set(profile.id,JSON.stringify({format:'um-personal-export-part/2',profileId:profile.id,snapshot:manifest.snapshot,part},null,2));
+      finishBusy(button);render();
+    }catch(error){finishBusy(button);exportErrors.set(profile.id,messageOf(error));render();}
   };
 
   const copyExport = async (profile: Profile, button: HTMLButtonElement) => {
@@ -661,6 +682,8 @@ export async function mountProfiles(root: HTMLElement, options: ProfileViewOptio
       void copyExport(profile, button);
       return;
     }
+    if(action==='profile-export-page'&&profile){void exportPart(profile,button);return;}
+    if(action==='profile-export-file'&&profile){void exportPart(profile,button,Number(button.dataset.fileIndex));return;}
     if (action === 'profile-close-export') {
       const ref = exportRef;
       exportRef = null;
@@ -727,4 +750,3 @@ export async function mountProfiles(root: HTMLElement, options: ProfileViewOptio
   await loadProfiles();
   return dispose;
 }
-

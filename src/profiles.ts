@@ -3,6 +3,7 @@ import {z} from 'zod';
 import type {Identity,Profile} from './contracts.ts';
 import {id} from './contracts.ts';
 import {ensure} from './errors.ts';
+import {personalExportSchemas,personalExportTask} from './personal-export.ts';
 import {operation,transaction,priorOperation,type Transaction} from './db.ts';
 const fieldsSchema=z.record(z.string().min(1).max(80),z.string().max(4000)).refine(v=>Object.keys(v).length<=40,'Perfil excede 40 campos.');
 const digest=(token:string)=>createHash('sha256').update(token).digest('hex');
@@ -16,11 +17,12 @@ export const profileSchemas={
   invite_revoke:z.strictObject({operationId:id,inviteId:id}),
   invite_accept:z.strictObject({operationId:id,token:z.string().regex(/^[A-Za-z0-9_-]{43}$/)}),
   profile_control:z.strictObject({operationId:id,profileId:id,action:z.enum(['revoke_creator','publish','private','delete'])}),
-  profile_export:z.strictObject({profileId:id}),
+  ...personalExportSchemas,
 };
-export const profileReadTasks=new Set(['profile_list','profile_get','profile_export']);
+export const profileReadTasks=new Set(['profile_list','profile_get',...Object.keys(personalExportSchemas)]);
 async function requireProfile(db:Transaction,profileId:string){const q=await db.query('select * from um.profiles where id=$1',[profileId]);ensure(q.rowCount,'NOT_FOUND','Perfil indisponível.',404);return profile(q.rows[0]);}
 export async function profileTask(identity:Identity,task:keyof typeof profileSchemas,input:unknown){
+  if(Object.hasOwn(personalExportSchemas,task))return personalExportTask(identity,task as keyof typeof personalExportSchemas,input);
   const args=profileSchemas[task].parse(input) as any;
   return transaction(identity,async db=>{
     if(task==='profile_control'&&args.action==='delete'){
@@ -28,13 +30,6 @@ export async function profileTask(identity:Identity,task:keyof typeof profileSch
     }
     if(task==='profile_list')return {items:(await db.query('select * from um.profiles order by id limit $1 offset $2',[args.limit,args.offset])).rows.map(profile),offset:args.offset,limit:args.limit};
     if(task==='profile_get')return requireProfile(db,args.profileId);
-    if(task==='profile_export'){
-      const own=await requireProfile(db,args.profileId);
-      ensure(own.holderId===identity.id||own.holderId===null&&own.creatorId===identity.id,'FORBIDDEN','A exportação pertence ao titular.',403);
-      const submissions=await db.query('select id,form_id,form_revision,revision,answers,submitted_at from um.submissions where profile_id=$1',[args.profileId]);
-      const records=await db.query('select id,kind,revision,data from um.reader_records where profile_id=$1',[args.profileId]);
-      return {format:'um-personal-export/1',exportedAt:new Date().toISOString(),profile:own,submissions:submissions.rows,records:records.rows};
-    }
     // Check current access BEFORE a receipt can be returned after revocation.
     if(args.profileId)await requireProfile(db,args.profileId);
     return operation(db,identity,args.operationId,task,args,async()=>{
