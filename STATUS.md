@@ -30,6 +30,10 @@ editorial e instrucional aplicada. A validação integrada local passou em 72 te
 sem skips, incluindo Storage real e a demonstração. Tipos, build web e compilação
 Android debug passaram. A matriz visual foi exercitada em 320/390/480 px e desktop,
 claro/escuro; dicas icon-only funcionam por teclado e toque longo.
+O gate Chrome executou 27 casos: 25 passaram diretamente; a corrida de recarga de
+comentários e um seletor Unicode foram corrigidos, e os dois casos passaram na
+revalidação focal. O shell de produção preservou fontes, prática, notas e abas
+offline após reinício em processos distintos. Não foi repetida a suíte integral.
 
 Ainda faltam a revisão editorial independente final, leitor de tela/ampliação
 comprovados e provas hospedadas/assinadas. Não há promoção autorizada pelos gates

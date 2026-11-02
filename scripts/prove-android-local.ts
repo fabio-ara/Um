@@ -33,6 +33,8 @@ try{
  c.ws.close();throw error;
 }
 await c.click('[data-action="open-sources"]');await c.click('[data-action="open-source"]');await c.wait('document.querySelector(".source-block")?.textContent.includes("ὅτι μὲν ὑμεῖς")');
+await c.click('[data-action="sync"]');await c.click('[data-action="prepare-offline"]');
+await c.wait('document.querySelector("#live")?.textContent.includes("Estudo preparado neste dispositivo")');
 await writeFile('.local/proofs/android-source.png',run(['exec-out','screencap','-p']));
 await c.evaluate('window.dispatchEvent(new Event("um-flush"))');await new Promise(r=>setTimeout(r,1200));c.ws.close();
 run(['shell','am','force-stop',pkg]);run(['reverse','--remove','tcp:4417']);run(['shell','am','start','-n',pkg+'/com.fabioara.um.MainActivity']);

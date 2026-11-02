@@ -14,6 +14,8 @@ test('fonte adquirida, deduplicação isolada, blocos e revisão histórica auto
  const author=await ctx.account(),other=await ctx.account();
  const text='ἄνθρωπος e\u0301 — العربية 漢字. Este texto sintético descreve um diálogo sobre conhecimento e a necessidade de conferir a evidência de cada afirmação.';
  const metadata={title:'Fonte sintética',language:'pt',nature:'original',extent:'fragment',authors:[],rights:{status:'permission',statement:'Criado para teste',evidence:'Fixture própria',offlineAllowed:true},provenance:'Teste local'};
+ await assert.rejects(sourceTask(author,'source_import',{operationId:uuid(),format:'url',url:'https://example.com/unapproved',metadata}),(e:any)=>e.code==='INCLUSION_REQUIRED');
+ assert.equal((await ctx.admin.query('select count(*)::int as n from um.sources where owner_id=$1',[author.id])).rows[0].n,0);
  const args={operationId:uuid(),format:'text',text,metadata};const imported=await sourceTask(author,'source_import',args) as any;
  const sourceId=imported.result.sourceId;assert.equal((await sourceTask(author,'source_import',{...args,operationId:uuid()}) as any).result.sourceId,sourceId);
  await assert.rejects(sourceView(other,sourceId),/indisponível/);

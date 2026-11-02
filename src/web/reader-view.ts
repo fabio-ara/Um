@@ -131,6 +131,7 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
   let notes: RecordItem[] = [];
   let terms: RecordItem[] = [];
   let comments: any[] = [];
+  let reloadingComments = false;
   let observations: any[] = [];
   let recordErrors = new Map<string, string>();
   let noteQuery = '';
@@ -1311,6 +1312,7 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
 
     const actionIcons:Record<string,string>={'open-sources':'book-text','open-resource':'sparkles','practice-start':'play','practice-next':'arrow-right','open-record-source':'reposition','share-note':'upload','reply-comment':'prompt','save-reply':'save','toggle-context':'more','open-source':'book-open','capture-selection':'preview','source-prev':'arrow-left','source-next':'arrow-right','toggle-form':'edit','save-note':'save','save-term':'save','save-observation':'review','save-comment':'prompt','open-edition':'book-open','open-manual-source':'book-text','edit-note':'edit','edit-term':'edit','save-note-edit':'save','save-term-edit':'save','cancel-edit':'remove-state','ask-delete':'remove-state','confirm-delete':'remove-state','cancel-delete':'remove-state'};
     for(const button of rootEl.querySelectorAll<HTMLButtonElement>('button.control')){const label=button.textContent?.trim()||'Abrir';button.setAttribute('aria-label',label);button.title=label;button.classList.remove('control');button.classList.add('icon-button');button.innerHTML=renderUiIcon(actionIcons[button.dataset.action||'']||'more');}
+    if(reloadingComments)for(const button of rootEl.querySelectorAll<HTMLButtonElement>('button[data-comment],button[data-action="reload-comments"]'))button.disabled=true;
     const main = rootEl.querySelector('[data-role="main"]') as HTMLElement | null;
     if (main) {
       const desired = forceScrollTop ? 0 : tabChanged ? (tab?.position || 0) : previousScroll;
@@ -1953,9 +1955,10 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
       }
       case 'save-reply': await saveReply(button); return;
       case 'reload-comments':
-        await loadComments();
-        pendingFocus = '[data-action="reload-comments"]';
-        render();
+        if(reloadingComments)return;
+        reloadingComments=true;render();
+        try { await loadComments();journalStatus='';announce('Comentários atualizados.'); }
+        finally { reloadingComments=false;pendingFocus='[data-action="reload-comments"]';render(); }
         return;
       case 'reload-observations':
         await loadObservations();

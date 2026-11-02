@@ -21,7 +21,13 @@ test('discussão preserva rascunho em conflito e respostas após excluir coment�
   await card.getByRole('button',{name:'Editar comentário',exact:true}).click();await card.getByRole('textbox',{name:'Editar comentário',exact:true}).fill('Meu rascunho preservado');
   await call(0,'comment_edit',{operationId:uuid(),projectId,commentId:parent,expectedRevision:1,text:'Alterado em outro dispositivo'});
   await card.getByRole('button',{name:'Salvar comentário',exact:true}).click();await expect(page.getByText(/Conflito ao editar o comentário:/).first()).toBeVisible();await expect(card.getByRole('textbox',{name:'Editar comentário',exact:true})).toHaveValue('Meu rascunho preservado');
-  await page.getByRole('button',{name:'Recarregar comentários',exact:true}).click();await expect(card.getByRole('textbox',{name:'Editar comentário',exact:true})).toHaveValue('Meu rascunho preservado');await card.getByRole('button',{name:'Salvar comentário',exact:true}).click();await expect(card.locator('.record-text')).toHaveText('Meu rascunho preservado');
+  let releaseReload!:()=>void;const reloadGate=new Promise<void>(r=>{releaseReload=r;});
+  await page.route('**/api/comment_list',async route=>{await reloadGate;await route.continue();});
+  await page.getByRole('button',{name:'Recarregar comentários',exact:true}).click();
+  try { await expect(card.getByRole('button',{name:'Salvar comentário',exact:true})).toBeDisabled();await expect(card.getByRole('textbox',{name:'Editar comentário',exact:true})).toHaveValue('Meu rascunho preservado'); }
+  finally { releaseReload(); }
+  await expect(page.locator('#live')).toHaveText('Comentários atualizados.');await page.unroute('**/api/comment_list');
+  await card.getByRole('button',{name:'Salvar comentário',exact:true}).click();await expect(card.locator('.record-text')).toHaveText('Meu rascunho preservado');
   await card.getByRole('button',{name:'Excluir comentário',exact:true}).click();await card.getByRole('button',{name:'Confirmar exclusão do comentário',exact:true}).click();await expect(card.getByRole('heading',{name:'Comentário removido',exact:true})).toBeVisible();await expect(card.getByRole('button',{name:'Responder comentário',exact:true})).toHaveCount(0);await expect(other).toContainText('Resposta alheia preservada');
   const rows=(await call(1,'comment_list',{projectId})).items;expect(rows.find((r:any)=>r.id===parent).text).toBe('');expect(rows.find((r:any)=>r.id===reply).text).toBe('Resposta alheia preservada');
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await mkdir('.local/proofs',{recursive:true});await card.scrollIntoViewIfNeeded();await page.screenshot({path:'.local/proofs/discussion-320-dark.png'});
