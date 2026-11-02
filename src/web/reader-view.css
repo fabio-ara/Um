@@ -17,7 +17,7 @@
   color: var(--reader-text);
   border-left: 1px solid var(--reader-border);
   border-right: 1px solid var(--reader-border);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-ui);
   font-size: 16px;
   line-height: 1.55;
   text-align: left;
@@ -67,10 +67,11 @@
 
 .tabstrip {
   flex: 0 0 auto;
-  display: flex;
+  display: grid;
   gap: 6px;
   padding: 8px 10px;
-  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 35dvh;
   background: var(--reader-surface);
   border-bottom: 1px solid var(--reader-border);
   scrollbar-width: thin;
@@ -83,23 +84,28 @@
   border-radius: 10px;
   overflow: hidden;
   background: var(--reader-bg);
+  justify-content: space-between;
 }
 .tab[data-active="true"] { border-color: var(--reader-accent); background: var(--reader-surface); }
 .tab-activate {
   min-height: 44px;
-  max-width: 170px;
+  max-width: none;
+  text-align: start;
+  flex: 1;
   padding: 0 10px;
   border: 0;
   background: transparent;
   color: inherit;
   font: inherit;
   font-size: 0.85rem;
-  white-space: nowrap;
+  white-space: normal;
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: pointer;
 }
 .tab[data-active="true"] .tab-activate { font-weight: 600; }
+.tab-list{flex:none;border-bottom:1px solid var(--reader-border)}
+.tab-list>summary{padding:10px;cursor:pointer;min-height:44px;max-height:90px;overflow:auto}
 
 .reader-main {
   flex: 1 1 auto;
@@ -305,6 +311,35 @@
 .reply-form { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--reader-border); }
 .selection-form .control,
 .reply-form .control { margin-top: 8px; }
+
+/* Caderno, observações e edições vinculadas. */
+.journal-tools { margin: 4px 0 10px; }
+.journal-tools .field-label { margin-top: 0; }
+.edit-form {
+  margin: 8px 0;
+  padding: 10px;
+  border: 1px dashed var(--reader-border);
+  border-radius: 10px;
+  background: var(--reader-bg);
+}
+.edit-form .field-input { margin-bottom: 6px; }
+.observation-group { border-top: 1px solid var(--reader-border); padding: 10px 0; }
+.observation-group:first-of-type { border-top: 0; padding-top: 0; }
+.observation-item {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--reader-border);
+  border-radius: 0 8px 8px 0;
+  background: var(--reader-bg);
+}
+.observation-item h4 { margin: 0; font-size: 0.86rem; }
+.observation-item .record-head { margin-bottom: 4px; }
+.edition-panel { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--reader-border); }
+.edition-target { border-top: 1px solid var(--reader-border); padding: 10px 0; }
+.edition-target:first-of-type { border-top: 0; padding-top: 0; }
+.manual-source { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--reader-border); }
+.manual-source .control { margin-top: 8px; }
+.record-card .meta-line { margin-top: 2px; }
 
 @media (max-width: 460px) {
   .reader-shell { max-width: none; border-left: 0; border-right: 0; }

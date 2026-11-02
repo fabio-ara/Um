@@ -12,7 +12,7 @@ import {mcpHandler} from './mcp.ts';
 import {authProxyUrl} from './auth-proxy.ts';
 export function createApp(){
  const app=express();app.disable('x-powered-by');
- const allowed=new Set([new URL(config.origin).origin,...(config.local?['http://localhost:4419']:[])]);
+ const allowed=new Set([new URL(config.origin).origin,'https://appassets.androidplatform.net',...(config.local?['http://localhost:4419','http://127.0.0.1:4420']:[])]);
  app.use((req,res,next)=>{
   res.set({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Vary':'Origin'});
   if(config.local&&req.headers.host!==new URL(config.apiOrigin).host)return next(new AppError('INVALID_HOST','Host inválido.',403));

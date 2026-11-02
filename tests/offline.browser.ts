@@ -1,5 +1,16 @@
 import { expect, test, type Page } from "@playwright/test";
 
+test('fila e projeção persistem atomicamente e repetição não reescreve a projeção',async({page})=>{
+ await boot(page);
+ const result=await page.evaluate(async()=>{
+  const t=(window as any).__offlineTest,{openOffline}=await t.load(),s=await openOffline('atomic-account','atomic-profile');
+  const op=t.operation('atomic-op','atomic-account','atomic-profile','note_save',{text:'original'});
+  await s.enqueue(op,{'note:one':{text:'original'}});await s.enqueue(op,{'note:one':{text:'não deve substituir'}});
+  let aborted=false;try{await s.enqueue({...op,id:'failed-op'},{'note:two':()=>{}});}catch{aborted=true;}
+  const value={one:await s.record('note:one'),two:await s.record('note:two'),count:(await s.operations()).length,aborted};await s.clear();s.close();return value;
+ });expect(result).toEqual({one:{text:'original'},two:null,count:1,aborted:true});
+});
+
 async function boot(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const moduleUrl = "/src/web/offline.ts";

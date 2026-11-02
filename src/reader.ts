@@ -19,7 +19,7 @@ export const readerSchemas={
  note_share:z.strictObject({...write,recordId:id,expectedRevision:revision}),
  term_save:z.strictObject({...write,recordId:id,expectedRevision:z.number().int().nonnegative(),anchor:anchorSchema,term:z.string().min(1).max(500),definition:z.string().min(1).max(12000)}),
  record_delete:z.strictObject({...write,recordId:id,expectedRevision:revision}),
- time_record:z.strictObject({...write,unitId:id,seconds:z.number().int().min(1).max(3600)}),
+ time_record:z.strictObject({...write,unitId:id,seconds:z.number().int().min(0).max(3600),mode:z.enum(['reading','practice','exploration']).default('reading'),event:z.enum(['open','interval','pause','resume','unit_change','close']).default('interval')}),
  attempt_submit:z.strictObject({...write,bundleRevision:revision,questionId:id,questionRevision:revision,optionId:z.string().min(1).max(100),sequenceId:id,createdAt:z.iso.datetime()}),
  choice_sequence:z.strictObject({...scope,errorsOnly:z.boolean(),unitId:id.optional()}),
  reader_rebase:z.strictObject(write),
@@ -76,8 +76,8 @@ export async function readerTask(identity:Identity,task:keyof typeof readerSchem
    if(task==='observation_resolve'){const q=await db.query('update um.observations set status=$3,result=$4 where id=$1 and project_id=$2 returning id',[a.observationId,a.projectId,a.status,a.result]);ensure(q.rowCount,'NOT_FOUND','Observação indisponível para revisão.',404);return {observationId:a.observationId};}
    if(task==='record_delete'){const q=await db.query("delete from um.reader_records where id=$1 and project_id=$2 and profile_id=$3 and revision=$4 and kind in ('note','term') returning id",[a.recordId,a.projectId,a.profileId,a.expectedRevision]);ensure(q.rowCount,'CONFLICT','Registro mudou ou não pode ser removido por esta ação.',409);return {recordId:a.recordId,deleted:true};}
    const recordId=a.recordId||a.operationId,kind=task==='reader_state_save'?'state':task==='note_save'?'note':task==='term_save'?'term':task==='attempt_submit'?'attempt':'time';
-   const data=kind==='state'?a.state:kind==='note'?{anchor:a.anchor,text:a.text}:kind==='term'?{anchor:a.anchor,term:a.term,definition:a.definition}:kind==='attempt'?attempt:{unitId:a.unitId,seconds:a.seconds,createdAt:new Date().toISOString()};
-   if((a.expectedRevision??0)===0)await db.query('insert into um.reader_records(id,account_id,profile_id,project_id,kind,data) values($1,$2,$3,$4,$5,$6)',[recordId,identity.id,a.profileId,a.projectId,kind,JSON.stringify(data)]);
+   const data=kind==='state'?a.state:kind==='note'?{anchor:a.anchor,text:a.text}:kind==='term'?{anchor:a.anchor,term:a.term,definition:a.definition}:kind==='attempt'?attempt:{unitId:a.unitId,seconds:a.seconds,mode:a.mode,event:a.event,createdAt:new Date().toISOString()};
+   if((a.expectedRevision??0)===0){const inserted=await db.query('insert into um.reader_records(id,account_id,profile_id,project_id,kind,data) values($1,$2,$3,$4,$5,$6) on conflict(id) do nothing returning id',[recordId,identity.id,a.profileId,a.projectId,kind,JSON.stringify(data)]);ensure(inserted.rowCount,'CONFLICT','Registro já existe. Confira a revisão antes de editar.',409);}
    else {const r=await db.query('update um.reader_records set data=$2,revision=revision+1 where id=$1 and revision=$3 and kind=$4 and project_id=$5 and profile_id=$6 returning id',[recordId,JSON.stringify(data),a.expectedRevision,kind,a.projectId,a.profileId]);ensure(r.rowCount,'CONFLICT','Registro alterado em outro dispositivo.',409);}
    return {recordId,revision:(a.expectedRevision||0)+1,...(attempt?{correct:attempt.correct,feedback:attempt.snapshot.options.find(o=>o.id===attempt.optionId)!.feedback}:{})};
   });

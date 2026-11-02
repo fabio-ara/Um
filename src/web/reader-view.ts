@@ -1,6 +1,8 @@
 import './reader-view.css';
 import { escapeHtml, iconButton, renderBody, announce, type StudyApi } from './dom.ts';
+import {renderUiIcon} from './icons.js';
 import { utf16ToCodePoint, selectionMatches } from '../anchors.ts';
+import {foregroundSeconds,remainingMinutes,type TimeMode} from '../study-time.ts';
 import type { Anchor, Choice, DocumentLink, ReaderTab, Resource, StudyUnit } from '../contracts.ts';
 
 type Options = { projectId: string; profileId: string; api: StudyApi; onExit: () => void };
@@ -15,6 +17,8 @@ type SourcePage = { id: string; revision: number; title: string; language: strin
 type RecordItem = { id: string; revision: number; data: any };
 type PassageGroup = { key: string; anchor: Anchor; relations: Set<DocumentLink['relation']>; provenance: any[] };
 type SelMatch = { id: string; target: Anchor; match: 'exact' | 'contains' };
+type EditionTarget = { anchor: Anchor; relation: DocumentLink['relation']; linkId: string };
+type ObservationGroup = { target: Anchor | null; items: any[] };
 type Practice = {
   unitId: string; sequenceId: string; questions: Choice[]; index: number; bundleRevision: number;
   errorsOnly: boolean; feedback: { optionId: string; correct: boolean; feedback: string } | null; error: string | null; finished: boolean;
@@ -32,8 +36,12 @@ function outcomeOf(value: any): WriteOutcome {
 
 const SOURCE_LIMIT = 40;
 const FULL_LIMIT = 100;
+const RECORD_LIMIT = 100;
+const MAX_RECORD_PAGES = 500;
 const uid = (): string => crypto.randomUUID();
 const h = (v: unknown) => escapeHtml(v);
+const anchorKey = (anchor: Anchor): string => [anchor.sourceId, anchor.sourceRevision, anchor.elementId, anchor.start, anchor.end].join('|');
+const sameAnchor = (a: Anchor, b: Anchor): boolean => anchorKey(a) === anchorKey(b);
 
 function messageOf(error: unknown): string {
   if (error && typeof error === 'object') {
@@ -53,7 +61,8 @@ function statusOf(error: unknown): number {
   return 0;
 }
 
-function dataOf(item: RecordItem): any {
+function dataOf(item: RecordItem | undefined): any {
+  if(!item)return {};
   if (!item || item.data == null) return null;
   if (typeof item.data === 'string') {
     try { return JSON.parse(item.data); } catch { return null; }
@@ -73,6 +82,7 @@ const RELATION: Record<string, string> = { supports: 'Fundamenta', interprets: '
 const NATURE: Record<string, string> = { original: 'Original', translation: 'Tradução', commentary: 'Comentário', bibliography: 'Bibliografia' };
 const PROVENANCE: Record<string, string> = { source: 'Fonte', translation: 'Tradução', interpretation: 'Interpretação', controversy: 'Controvérsia', example: 'Exemplo', reflection: 'Reflexão' };
 const RESOURCE_TYPE: Record<string, string> = { explanation: 'Explicação', analogy: 'Analogia', context: 'Contexto', contrast: 'Contraste', interpretation: 'Interpretação', reflection: 'Reflexão', vocabulary: 'Vocabulário' };
+const OBSERVATION_STATUS: Record<string, string> = { open: 'Aberta', addressed: 'Tratada', unchanged: 'Sem alteração' };
 
 export async function mountReader(root: HTMLElement, options: Options): Promise<() => void> {
   const { projectId, profileId, api, onExit } = options;
@@ -112,6 +122,13 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
   let comments: any[] = [];
   let observations: any[] = [];
   let recordErrors = new Map<string, string>();
+  let noteQuery = '';
+  let termQuery = '';
+  let editingNoteId: string | null = null;
+  let editingTermId: string | null = null;
+  let confirmDelete: string | null = null;
+  let journalStatus = '';
+  const writeOps = new Map<string, string>();
 
   let sectionOpen = new Set<string>(['resources']);
   let openForm: string | null = null;
@@ -126,6 +143,7 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
   const practiceDates = new Map<string,string>();
 
   let originLinks = new Map<string, string>();
+  const sourceUnits = new Map<string, string>();
   let contextOpen = new Set<string>();
   let uiAnchors = new Map<string, Anchor>();
   let pendingFocus: string | null = null;
@@ -134,7 +152,9 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
   let clockTimer: number | null = null;
   let lastTick = Date.now();
   let lastSent = 0;
-  let accrued = 0;
+  const accrued = new Map<string,number>();
+  let timeRecords:{unitId:string;seconds:number;mode?:TimeMode}[]=[];
+  let lastTimeContext='';
   let visible = document.visibilityState === 'visible';
   let focused = document.hasFocus();
 
@@ -223,6 +243,58 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
     return page.offset + page.blocks.length;
   }
 
+  function writeOperation(key: string): string {
+    let operationId = writeOps.get(key);
+    if (!operationId) { operationId = uid(); writeOps.set(key, operationId); }
+    return operationId;
+  }
+
+  function contentKey(text: string): string {
+    // JSON encoding preserves the full content, so different intents never share
+    // an operation id. A 32-bit hash would collide.
+    return JSON.stringify(text);
+  }
+
+  async function verifyAnchorByPage(anchor: Anchor): Promise<boolean> {
+    if(!anchor||!Number.isInteger(anchor.start)||!Number.isInteger(anchor.end)||anchor.start<0||anchor.end<=anchor.start)return false;
+    try{const page=await api('source_locate',{sourceId:anchor.sourceId,sourceRevision:anchor.sourceRevision,elementId:anchor.elementId});const block=page.blocks?.find((b:SourceBlock)=>b.id===anchor.elementId);return Boolean(block&&Array.from(block.text).slice(anchor.start,anchor.end).join('')===anchor.exact);}catch{return false;}
+  }
+
+  function preparedUnits(tabId?: string): StudyUnit[] {
+    const result: StudyUnit[] = [];
+    const preferredId = tabId ? sourceUnits.get(tabId) : undefined;
+    const preferred = preferredId ? contentCache.get(preferredId) as StudyUnit | undefined : undefined;
+    if (preferred && Array.isArray(preferred.references)) result.push(preferred);
+    for (const value of contentCache.values()) {
+      const unit = value as StudyUnit;
+      if (unit && Array.isArray(unit.references) && !result.includes(unit)) result.push(unit);
+    }
+    return result;
+  }
+
+  function editionTargetsFor(tab: ReaderTab): EditionTarget[] {
+    const current = tab.anchor;
+    if (!current) return [];
+    const seen = new Set<string>();
+    const targets: EditionTarget[] = [];
+    for (const unit of preparedUnits(tab.id)) {
+      for (const link of unit.references || []) {
+        const inFrom = (link.from || []).some(anchor => sameAnchor(anchor, current));
+        const inTo = (link.to || []).some(anchor => sameAnchor(anchor, current));
+        if (!inFrom && !inTo) continue;
+        const others = inFrom ? (link.to || []) : (link.from || []);
+        for (const anchor of others) {
+          if (sameAnchor(anchor, current)) continue;
+          const key = anchorKey(anchor);
+          if (seen.has(key)) continue;
+          seen.add(key);
+          targets.push({ anchor, relation: link.relation, linkId: link.id });
+        }
+      }
+    }
+    return targets;
+  }
+
   function sourcePage(id: string, rev: number, offset: number, limit: number): Promise<SourcePage> {
     const key = pageKey(id, rev, offset, limit);
     const cached = sourcePages.get(key);
@@ -284,14 +356,36 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
     if (active) render();
   }
 
-  async function loadRecords(kind: 'note' | 'term'): Promise<RecordItem[]> {
-    try {
-      const result = await api('reader_records', { projectId, profileId, kind, offset: 0, limit: 100 });
-      return Array.isArray(result?.items) ? result.items : [];
-    } catch (error) {
-      recordErrors.set(kind, messageOf(error));
-      return [];
+  async function loadRecords(kind: 'note' | 'term' | 'time' | 'state'): Promise<RecordItem[]> {
+    recordErrors.delete(kind);
+    const items: RecordItem[] = [];
+    const seen = new Set<string>();
+    let offset = 0;
+    for (let pageNumber = 0; pageNumber < MAX_RECORD_PAGES; pageNumber += 1) {
+      let result: any;
+      try {
+        result = await api('reader_records', { projectId, profileId, kind, offset, limit: RECORD_LIMIT });
+      } catch (error) {
+        recordErrors.set(kind, `${messageOf(error)} (${items.length} registro(s) já lidos)`);
+        return items;
+      }
+      const pageItems: RecordItem[] = Array.isArray(result?.items) ? result.items : [];
+      let added = 0;
+      for (const item of pageItems) {
+        if (!item || typeof item.id !== 'string' || seen.has(item.id)) continue;
+        seen.add(item.id);
+        items.push(item);
+        added += 1;
+      }
+      if (pageItems.length < RECORD_LIMIT) return items;
+      if (added === 0) {
+        recordErrors.set(kind, 'Leitura interrompida: a página não avançou; há registros não carregados.');
+        return items;
+      }
+      offset += pageItems.length;
     }
+    recordErrors.set(kind, `Leitura limitada a ${MAX_RECORD_PAGES} páginas de ${RECORD_LIMIT} registros; há registros não carregados.`);
+    return items;
   }
 
   async function loadComments(): Promise<void> {
@@ -305,16 +399,10 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
   }
 
   async function loadState(): Promise<{ id: string; revision: number; data: any } | null> {
-    try {
-      const result = await api('reader_records', { projectId, profileId, kind: 'state', offset: 0, limit: 10 });
-      const items: RecordItem[] = Array.isArray(result?.items) ? result.items : [];
-      const best = [...items].sort((a, b) => (b.revision || 0) - (a.revision || 0))[0];
-      if (!best) return null;
-      return { id: best.id, revision: best.revision || 0, data: dataOf(best) };
-    } catch (error) {
-      recordErrors.set('state', messageOf(error));
-      return null;
-    }
+    const items = await loadRecords('state');
+    const best = [...items].sort((a, b) => (b.revision || 0) - (a.revision || 0))[0];
+    if (!best) return null;
+    return { id: best.id, revision: best.revision || 0, data: dataOf(best) };
   }
 
   function validTabs(value: any): ReaderTab[] {
@@ -395,6 +483,7 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
     const [loadedNotes, loadedTerms] = await Promise.all([loadRecords('note'), loadRecords('term'), loadComments(), loadObservations()]);
     notes = loadedNotes;
     terms = loadedTerms;
+    timeRecords=(await loadRecords('time')).map(r=>r.data);
     booted = true;
     void loadAllResources();
     startClock();
@@ -402,32 +491,29 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
 
   function startClock(): void {
     lastTick = Date.now();
+    flushTime(true,'open');
     clockTimer = window.setInterval(() => {
       if (!active) return;
       const now = Date.now();
-      const counting = visible && focused && document.hasFocus() && document.visibilityState === 'visible';
-      const delta = counting && currentUnitId ? Math.min(Math.max(0, now - lastTick), 5000) : 0;
+      const context=currentUnitId+':'+timeMode();
+      const delta = context===lastTimeContext&&currentUnitId?foregroundSeconds(lastTick,now,visible&&document.visibilityState==='visible',focused&&document.hasFocus()):0;
+      lastTimeContext=context;
       lastTick = now;
-      accrued += delta / 1000;
-      if (accrued >= 60) flushTime(false);
+      accrued.set(context,(accrued.get(context)||0)+delta);
+      if (now-lastSent>=60000) flushTime(false);
     }, 1000);
   }
 
-  function flushTime(force: boolean): void {
-    const seconds = Math.floor(accrued);
-    if (seconds < 1 || !currentUnitId) return;
-    const elapsed = Date.now() - lastSent;
-    if (elapsed < 60000) return;
-    if (!force && seconds < 60) return;
-    const send = Math.min(3600, seconds);
-    accrued -= send;
+  function timeMode():TimeMode{return activeTab()?.kind!=='unit'?'exploration':practice&&!practice.finished?'practice':'reading';}
+  function flushTime(force: boolean,event='interval'): void {
+    if(!currentUnitId)return;
+    if(!force&&Date.now()-lastSent<60000)return;
     lastSent = Date.now();
-    void api('time_record', { operationId: uid(), projectId, profileId, unitId: currentUnitId, seconds: send })
-      .catch((error: unknown) => {
-        accrued += send;
-        saveStatus = `Tempo não registrado: ${messageOf(error)}`;
-        if (active) render();
-      });
+    const samples=[...accrued].map(([key,value])=>{const[unitId,mode]=key.split(':');return {key,unitId,mode,seconds:Math.floor(value)};}).filter(r=>r.seconds>0);
+    if(!samples.length&&force)samples.push({key:currentUnitId+':'+timeMode(),unitId:currentUnitId,mode:timeMode(),seconds:0});
+    for(const sample of samples){accrued.set(sample.key,(accrued.get(sample.key)||0)-sample.seconds);const {unitId,mode,seconds}=sample;timeRecords.push({unitId,mode:mode as TimeMode,seconds});
+      void api('time_record',{operationId:uid(),projectId,profileId,unitId,mode,seconds:Math.min(3600,seconds),event}).catch((error:unknown)=>{saveStatus=`Tempo não confirmado: ${messageOf(error)}`;});
+    }
   }
 
   function stateSnapshot(): any {
@@ -559,6 +645,7 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
 
   function switchUnit(unitId: string): void {
     if (!units.some(u => u.id === unitId)) return;
+    flushTime(true,'unit_change');
     currentUnitId = unitId;
     const found = tabs.find(t => t.kind === 'unit');
     let unitTabId: string;
@@ -585,30 +672,65 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
   }
 
   async function locateBlock(tabId: string, anchor: Anchor): Promise<void> {
-    const limit = SOURCE_LIMIT;
-    let offset = 0;
-    for (let guard = 0; guard < 30; guard += 1) {
-      let page: SourcePage;
-      try { page = await sourcePage(anchor.sourceId, anchor.sourceRevision, offset, limit); }
-      catch (error) { sourceErrors.set(pageKey(anchor.sourceId, anchor.sourceRevision, offset, limit), messageOf(error)); break; }
-      if (page.blocks.some(b => b.id === anchor.elementId)) {
-        sourceOffsets.set(tabId, offset);
-        if (active) { forceScrollTop = true; render(); }
-        return;
-      }
-      if (!hasNext(page)) break;
-      offset = nextOffset(page);
-    }
-    sourceOffsets.set(tabId, 0);
-    if (active) render();
+    try{const located=await api('source_locate',{sourceId:anchor.sourceId,sourceRevision:anchor.sourceRevision,elementId:anchor.elementId});const block=located.blocks?.[0];
+      if(!block||Array.from(block.text).slice(anchor.start,anchor.end).join('')!==anchor.exact)throw Error('Trecho alterado.');
+      sourceOffsets.set(tabId,Math.floor(located.offset/SOURCE_LIMIT)*SOURCE_LIMIT);
+    }catch{const tab=tabs.find(t=>t.id===tabId);if(tab)tab.anchorStatus='needs_review';sourceOffsets.set(tabId,0);announce('A passagem precisa de nova conferência. A citação anterior foi preservada.');}
+    scheduleSave();if(active)render();
   }
 
   function openSourceAt(anchor: Anchor, originTabId: string): void {
+    const origin = activeTab();
+    const inherited = originTabId ? sourceUnits.get(originTabId) : undefined;
+    const unitId = inherited || (origin && (origin.kind === 'unit' || origin.kind === 'sources') ? origin.objectId : currentUnitId);
     const meta = sourceEntry(anchor.sourceId, anchor.sourceRevision);
     const tab = openTab('source', anchor.sourceId, meta?.title || 'Fonte', anchor.sourceRevision, { anchor, origin: anchor });
+    if (unitId) sourceUnits.set(tab.id, unitId);
     if (originTabId) originLinks.set(tab.id, originTabId);
     sourceOffsets.set(tab.id, 0);
     void locateBlock(tab.id, anchor);
+  }
+
+  async function openEdition(anchor: Anchor): Promise<void> {
+    const tab = activeTab();
+    if (!tab || tab.kind !== 'source') return;
+    if (!tab.anchor || tab.anchorStatus === 'needs_review') {
+      announce('Âncora atual não verificada; troca por vínculo indisponível. Use a navegação manual de fonte.');
+      return;
+    }
+    announce('Verificando âncoras da edição vinculada…');
+    const currentValid = await verifyAnchorByPage(tab.anchor);
+    if (!currentValid) {
+      announce('A âncora atual não foi verificada na fonte. A troca por vínculo está indisponível; use a navegação manual.');
+      return;
+    }
+    const targetValid = await verifyAnchorByPage(anchor);
+    if (!targetValid) {
+      announce('O alvo vinculado não foi verificado na própria revisão. A posição não foi transferida; use a navegação manual.');
+      return;
+    }
+    openSourceAt(anchor, tab.id);
+    announce('Edição vinculada aberta com revisão e posição próprias.');
+  }
+
+  function openManualSource(tab: ReaderTab): void {
+    const select = rootEl.querySelector('[data-role="manual-source"]') as HTMLSelectElement | null;
+    const value = select?.value || '';
+    const separator = value.lastIndexOf('|');
+    const sourceId = separator >= 0 ? value.slice(0, separator) : '';
+    const revision = Number(separator >= 0 ? value.slice(separator + 1) : '');
+    const entry = sourceIndex.find(candidate => candidate.id === sourceId && candidate.revision === revision);
+    if (!entry) { announce('Selecione uma fonte do índice para navegar manualmente.'); return; }
+    const unitId = sourceUnits.get(tab.id) || currentUnitId;
+    const opened = openTab('source', entry.id, entry.title, entry.revision, { anchor: null, origin: tab.anchor || tab.origin || null });
+    opened.anchor = null;
+    opened.anchorStatus = undefined;
+    if (unitId) sourceUnits.set(opened.id, unitId);
+    sourceOffsets.set(opened.id, 0);
+    forceScrollTop = true;
+    scheduleSave();
+    render();
+    announce('Fonte aberta manualmente na primeira página; nenhuma posição foi transferida.');
   }
 
   function readField(button: HTMLElement, name: string): string {
@@ -726,19 +848,57 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
     }
   }
 
+  function writeFailed(error: unknown, key: string, what: string): void {
+    const conflict = statusOf(error) === 409;
+    if (conflict) writeOps.delete(key);
+    const message = conflict
+      ? `Conflito ao ${what}: o registro mudou em outro dispositivo. Nada foi sobrescrito; recarregue o caderno antes de editar.`
+      : `Não foi possível ${what}: ${messageOf(error)}`;
+    journalStatus = message;
+    announce(message);
+    if (active) render();
+  }
+
   async function saveNote(): Promise<void> {
     if (!selAnchor) { announce('Selecione um trecho da fonte antes de salvar a nota.'); return; }
     const saveButton = rootEl.querySelector('[data-action="save-note"]') as HTMLElement | null;
     const text = readField(saveButton || rootEl, 'note-text');
     if (!text) { announce('Escreva a nota antes de salvar.'); return; }
+    const key = ['new-note', anchorKey(selAnchor), contentKey(text)].join(':');
+    const operationId = writeOperation(key);
+    journalStatus = '';
     try {
-      const receipt=await api('note_save', { operationId: uid(), projectId, profileId, recordId: uid(), expectedRevision: 0, anchor: selAnchor, text });
+      const receipt = await api('note_save', { operationId, projectId, profileId, recordId: operationId, expectedRevision: 0, anchor: selAnchor, text });
+      writeNotice(receipt, 'Nota privada salva.');
+      writeOps.delete(key);
       notes = await loadRecords('note');
       openForm = null;
-      writeNotice(receipt,'Nota privada salva.');
       pendingFocus = '[data-action="capture-selection"]';
       render();
-    } catch (error) { announce(`Não foi possível salvar a nota: ${messageOf(error)}`); }
+    } catch (error) { writeFailed(error, key, 'salvar a nota'); }
+  }
+
+  async function saveNoteEdit(recordId: string): Promise<void> {
+    const item = notes.find(note => note.id === recordId);
+    const data = dataOf(item) || {};
+    const anchor = targetOf(data.anchor);
+    if (!item || !anchor) { announce('Nota sem âncora preservada; edição indisponível.'); return; }
+    const saveButton = rootEl.querySelector(`[data-action="save-note-edit"][data-record="${recordId}"]`) as HTMLElement | null;
+    const text = readField(saveButton || rootEl, 'edit-note-text');
+    if (!text) { announce('Escreva o texto antes de salvar.'); return; }
+    const expectedRevision = Number(item.revision) || 0;
+    const key = ['edit-note', item.id, String(expectedRevision), contentKey(text)].join(':');
+    const operationId = writeOperation(key);
+    journalStatus = '';
+    try {
+      const receipt = await api('note_save', { operationId, projectId, profileId, recordId: item.id, expectedRevision, anchor, text });
+      writeNotice(receipt, 'Nota atualizada.');
+      writeOps.delete(key);
+      editingNoteId = null;
+      notes = await loadRecords('note');
+      pendingFocus = `[data-action="edit-note"][data-record="${recordId}"]`;
+      render();
+    } catch (error) { writeFailed(error, key, 'editar a nota'); }
   }
 
   async function saveTerm(): Promise<void> {
@@ -747,14 +907,62 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
     const term = readField(scope, 'term');
     const definition = readField(scope, 'definition');
     if (!term || !definition) { announce('Informe o termo e a definição.'); return; }
+    const key = ['new-term', anchorKey(selAnchor), contentKey(JSON.stringify([term,definition]))].join(':');
+    const operationId = writeOperation(key);
+    journalStatus = '';
     try {
-      const receipt=await api('term_save', { operationId: uid(), projectId, profileId, recordId: uid(), expectedRevision: 0, anchor: selAnchor, term, definition });
+      const receipt = await api('term_save', { operationId, projectId, profileId, recordId: operationId, expectedRevision: 0, anchor: selAnchor, term, definition });
+      writeNotice(receipt, 'Vocabulário privado salvo.');
+      writeOps.delete(key);
       terms = await loadRecords('term');
       openForm = null;
-      writeNotice(receipt,'Vocabulário privado salvo.');
       pendingFocus = '[data-action="capture-selection"]';
       render();
-    } catch (error) { announce(`Não foi possível salvar o vocabulário: ${messageOf(error)}`); }
+    } catch (error) { writeFailed(error, key, 'salvar o vocabulário'); }
+  }
+
+  async function saveTermEdit(recordId: string): Promise<void> {
+    const item = terms.find(entry => entry.id === recordId);
+    const data = dataOf(item) || {};
+    const anchor = targetOf(data.anchor);
+    if (!item || !anchor) { announce('Termo sem âncora preservada; edição indisponível.'); return; }
+    const scope = (rootEl.querySelector(`[data-action="save-term-edit"][data-record="${recordId}"]`) as HTMLElement | null) || rootEl;
+    const term = readField(scope, 'edit-term');
+    const definition = readField(scope, 'edit-definition');
+    if (!term || !definition) { announce('Informe o termo e a definição antes de salvar.'); return; }
+    const expectedRevision = Number(item.revision) || 0;
+    const key = ['edit-term', item.id, String(expectedRevision), contentKey(JSON.stringify([term,definition]))].join(':');
+    const operationId = writeOperation(key);
+    journalStatus = '';
+    try {
+      const receipt = await api('term_save', { operationId, projectId, profileId, recordId: item.id, expectedRevision, anchor, term, definition });
+      writeNotice(receipt, 'Vocabulário atualizado.');
+      writeOps.delete(key);
+      editingTermId = null;
+      terms = await loadRecords('term');
+      pendingFocus = `[data-action="edit-term"][data-record="${recordId}"]`;
+      render();
+    } catch (error) { writeFailed(error, key, 'editar o vocabulário'); }
+  }
+
+  async function deleteRecord(kind: 'note' | 'term', recordId: string): Promise<void> {
+    const list = kind === 'note' ? notes : terms;
+    const item = list.find(entry => entry.id === recordId);
+    if (!item) { announce('Registro indisponível para exclusão.'); return; }
+    const expectedRevision = Number(item.revision) || 0;
+    const key = ['delete', kind, item.id, String(expectedRevision)].join(':');
+    const operationId = writeOperation(key);
+    journalStatus = '';
+    try {
+      const receipt = await api('record_delete', { operationId, projectId, profileId, recordId: item.id, expectedRevision });
+      writeNotice(receipt, kind === 'note' ? 'Nota excluída.' : 'Termo excluído.');
+      writeOps.delete(key);
+      confirmDelete = null;
+      if (kind === 'note') { notes = await loadRecords('note'); if (editingNoteId === recordId) editingNoteId = null; }
+      else { terms = await loadRecords('term'); if (editingTermId === recordId) editingTermId = null; }
+      pendingFocus = kind === 'note' ? '[data-action="toggle-section"][data-section="notes"]' : '[data-action="toggle-section"][data-section="terms"]';
+      render();
+    } catch (error) { writeFailed(error, key, kind === 'note' ? 'excluir a nota' : 'excluir o vocabulário'); }
   }
 
   async function saveObservation(): Promise<void> {
@@ -904,11 +1112,13 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
     const statuses: string[] = [];
     if (personalError) statuses.push(`Complemento pessoal indisponível: ${personalError}`);
     if (saveStatus) statuses.push(saveStatus);
+    if (journalStatus) statuses.push(journalStatus);
     if (recordErrors.get('state')) statuses.push(`Estado não restaurado: ${recordErrors.get('state')}`);
     if (recordErrors.get('comments')) statuses.push(`Comentários indisponíveis: ${recordErrors.get('comments')}`);
     if (recordErrors.get('observations')) statuses.push(`Observações indisponíveis: ${recordErrors.get('observations')}`);
 
     const originVisible = Boolean(tab && (tab.origin || originLinks.has(tab.id)));
+    const inputDrafts=new Map([...rootEl.querySelectorAll<HTMLInputElement|HTMLTextAreaElement>('input[data-field],textarea[data-field]')].map(el=>[el.dataset.field!,{value:el.value,start:el.selectionStart,end:el.selectionEnd,focused:el===document.activeElement}]));
     rootEl.innerHTML = `
       <section class="reader-shell" aria-label="Leitor de estudo">
         <header class="reader-head">
@@ -925,7 +1135,10 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
         ${booted ? renderTabStrip() : ''}
         <main class="reader-main" data-role="main" tabindex="-1">${body}</main>
       </section>`;
+    for(const el of rootEl.querySelectorAll<HTMLInputElement|HTMLTextAreaElement>('input[data-field],textarea[data-field]')){const draft=inputDrafts.get(el.dataset.field!);if(draft&&!tabChanged){el.value=draft.value;if(draft.focused){el.focus({preventScroll:true});if(draft.start!==null&&draft.end!==null)el.setSelectionRange(draft.start,draft.end);}}}
 
+    const actionIcons:Record<string,string>={'open-sources':'book-text','open-resource':'sparkles','practice-start':'play','practice-next':'arrow-right','open-record-source':'reposition','share-note':'upload','reply-comment':'prompt','save-reply':'save','toggle-context':'more','open-source':'book-open','capture-selection':'preview','source-prev':'arrow-left','source-next':'arrow-right','toggle-form':'edit','save-note':'save','save-term':'save','save-observation':'review','save-comment':'prompt','open-edition':'book-open','open-manual-source':'book-text','edit-note':'edit','edit-term':'edit','save-note-edit':'save','save-term-edit':'save','cancel-edit':'remove-state','ask-delete':'remove-state','confirm-delete':'remove-state','cancel-delete':'remove-state'};
+    for(const button of rootEl.querySelectorAll<HTMLButtonElement>('button.control')){const label=button.textContent?.trim()||'Abrir';button.setAttribute('aria-label',label);button.title=label;button.classList.remove('control');button.classList.add('icon-button');button.innerHTML=renderUiIcon(actionIcons[button.dataset.action||'']||'more');}
     const main = rootEl.querySelector('[data-role="main"]') as HTMLElement | null;
     if (main) {
       const desired = forceScrollTop ? 0 : tabChanged ? (tab?.position || 0) : previousScroll;
@@ -937,12 +1150,12 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
   }
 
   function renderTabStrip(): string {
-    return `<nav class="tabstrip" role="tablist" aria-label="Abas abertas">
+    return `<details class="tab-list" ${lastTabRendered===activeTabId&&rootEl.querySelector<HTMLDetailsElement>('.tab-list')?.open?'open':''}><summary>${h(activeTab()?.title||'Abas abertas')} <span class="muted">· ${tabs.length} abas</span></summary><nav class="tabstrip" role="tablist" aria-label="Abas abertas">
       ${tabs.map(tab => `<span class="tab" data-active="${tab.id === activeTabId}">
         <button type="button" class="tab-activate" role="tab" aria-selected="${tab.id === activeTabId}" data-action="switch-tab" data-tab="${h(tab.id)}" title="${h(tab.title)}">${h(tab.title)}</button>
         ${iconButton('remove-state', 'Fechar aba', 'close-tab', `data-tab="${h(tab.id)}"`)}
       </span>`).join('')}
-    </nav>`;
+    </nav></details>`;
   }
 
   function renderUnit(tab: ReaderTab): string {
@@ -953,6 +1166,7 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
       return `<div class="reader-loading" role="status">Carregando unidade…</div>`;
     }
     const groups = groupsFor(unit);
+    const estimate=remainingMinutes(units.map(u=>u.id),unit.id,timeRecords);
     return `
       <section class="reader-card unit-card" aria-labelledby="unit-title">
         <div class="unit-toolbar">
@@ -962,6 +1176,7 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
           </select>
         </div>
         <h2 id="unit-title" tabindex="-1">${h(unit.title)}</h2>
+        <p class="muted">${estimate?`Cerca de ${estimate} min de leitura principal restante, pelo ritmo observado.`:'Estimativa de leitura disponível após percorrer uma unidade.'} Prática e exploração são registradas separadamente; tempo não mede aprendizagem.</p>
         <div class="reader-body" dir="auto">${renderBody(unit.body)}</div>
       </section>
       <section class="reader-card">
@@ -1057,50 +1272,158 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
     </div>`;
   }
 
+  function quotePreview(text?:string):string{if(!text)return '<p class="muted">Trecho indisponível</p>';const points=Array.from(text);return points.length<=180?`<p class="quote" dir="auto">${h(text)}</p>`:`<details class="quote-preview"><summary>${h(points.slice(0,180).join(''))}…</summary><p class="quote" dir="auto">${h(text)}</p></details>`;}
+
+  function journalMatches(query: string, values: (string | undefined)[]): boolean {
+    const needle = query.trim().toLocaleLowerCase();
+    if (!needle) return true;
+    return values.some(value => String(value ?? '').toLocaleLowerCase().includes(needle));
+  }
+
+  function renderJournalSearch(kind: 'note' | 'term', query: string, shown: number, total: number): string {
+    const id = kind === 'note' ? 'note-search' : 'term-search';
+    const label = kind === 'note' ? 'Buscar nas notas' : 'Buscar no vocabulário';
+    return `<div class="journal-tools">
+      <label class="field-label" for="${id}">${label} (${shown} de ${total})</label>
+      <input id="${id}" class="field-input" type="search" data-role="${id}" data-field="${id}" value="${h(query)}" autocomplete="off" placeholder="Texto, termo ou trecho">
+    </div>`;
+  }
+
   function renderNotesSection(): string {
-    const content = notes.length ? notes.map(item => {
+    const filtered = notes.filter(item => {
+      const data = dataOf(item) || {};
+      const anchor = targetOf(data.anchor);
+      return journalMatches(noteQuery, [data.text, anchor?.exact, anchor?.locator]);
+    });
+    const records = filtered.map(item => {
       const data = dataOf(item) || {};
       const anchor = targetOf(data.anchor);
       const review = data.anchorStatus === 'needs_review';
+      const editing = editingNoteId === item.id;
+      const deleting = confirmDelete === `note:${item.id}`;
+      const body = editing
+        ? `<div class="edit-form" data-form-block>
+            <label class="field-label" for="edit-note-${h(item.id)}">Texto da nota</label>
+            <textarea id="edit-note-${h(item.id)}" class="field-input" data-field="edit-note-text" rows="4">${h(data.text || '')}</textarea>
+            <div class="button-row">
+              <button type="button" class="control" data-action="save-note-edit" data-record="${h(item.id)}">Salvar alterações</button>
+              <button type="button" class="control" data-action="cancel-edit" data-kind="note">Cancelar</button>
+            </div>
+          </div>`
+        : `<p class="record-text" dir="auto">${h(data.text || '')}</p>`;
+      const actions = deleting
+        ? `<div class="warning" role="alert">
+            <p>Confirmar exclusão desta nota? A âncora e o texto serão removidos.</p>
+            <div class="button-row">
+              <button type="button" class="control" data-action="confirm-delete" data-kind="note" data-record="${h(item.id)}">Excluir definitivamente</button>
+              <button type="button" class="control" data-action="cancel-delete" data-kind="note">Cancelar</button>
+            </div>
+          </div>`
+        : `<div class="button-row">
+            ${anchor ? `<button type="button" class="control" data-action="open-record-source" data-anchor="${anchorRef(anchor)}">Ver no contexto</button>` : ''}
+            <button type="button" class="control" data-action="edit-note" data-record="${h(item.id)}">Editar</button>
+            <button type="button" class="control" data-action="ask-delete" data-kind="note" data-record="${h(item.id)}">Excluir</button>
+            <button type="button" class="control" data-action="share-note" data-record="${h(item.id)}" data-revision="${Number(item.revision) || 0}" ${sharedNotes.has(item.id) ? 'disabled' : ''}>${sharedNotes.has(item.id) ? 'Compartilhada' : 'Compartilhar como comentário'}</button>
+          </div>`;
       return `<article class="record-card">
-        <p class="quote">${h(anchor?.exact || 'Trecho indisponível')}</p>
+        ${quotePreview(anchor?.exact)}
         ${review ? `<p class="warning">Revisão pendente. Trecho anterior preservado: “${h(anchor?.exact || '')}”.</p>` : ''}
-        <p class="record-text" dir="auto">${h(data.text || '')}</p>
-        <div class="button-row">
-          ${anchor ? `<button type="button" class="control" data-action="open-record-source" data-anchor="${anchorRef(anchor)}">Ver no contexto</button>` : ''}
-          <button type="button" class="control" data-action="share-note" data-record="${h(item.id)}" data-revision="${Number(item.revision) || 0}" ${sharedNotes.has(item.id) ? 'disabled' : ''}>${sharedNotes.has(item.id) ? 'Compartilhada' : 'Compartilhar como comentário'}</button>
-        </div>
+        <p class="meta-line">Revisão do registro: ${Number(item.revision) || 0}${anchor ? ` · ${h(anchor.locator||"Passagem selecionada")}` : ''}</p>
+        ${body}
+        ${actions}
       </article>`;
-    }).join('') : `<p class="muted">${recordErrors.get('note') ? `Notas indisponíveis: ${h(recordErrors.get('note'))}` : 'Nenhuma nota privada.'}</p>`;
+    }).join('');
+    let content = renderJournalSearch('note', noteQuery, filtered.length, notes.length);
+    if (!notes.length) content += `<p class="muted">${recordErrors.get('note') ? `Notas indisponíveis: ${h(recordErrors.get('note'))}` : 'Nenhuma nota privada.'}</p>`;
+    else if (!filtered.length) content += `<p class="muted">Nenhuma nota encontrada.</p>`;
+    else content += records;
+    if (recordErrors.get('note') && notes.length) content += `<p class="warning">Leitura parcial: ${h(recordErrors.get('note'))}</p>`;
     return sectionWrap('notes', 'Notas privadas', notes.length, content);
   }
 
   function renderTermsSection(): string {
-    const content = terms.length ? terms.map(item => {
+    const filtered = terms.filter(item => {
       const data = dataOf(item) || {};
       const anchor = targetOf(data.anchor);
+      return journalMatches(termQuery, [data.term, data.definition, anchor?.exact]);
+    });
+    const records = filtered.map(item => {
+      const data = dataOf(item) || {};
+      const anchor = targetOf(data.anchor);
+      const review = data.anchorStatus === 'needs_review';
+      const editing = editingTermId === item.id;
+      const deleting = confirmDelete === `term:${item.id}`;
+      const body = editing
+        ? `<div class="edit-form" data-form-block>
+            <label class="field-label" for="edit-term-${h(item.id)}">Termo</label>
+            <input id="edit-term-${h(item.id)}" class="field-input" data-field="edit-term" value="${h(data.term || '')}">
+            <label class="field-label" for="edit-definition-${h(item.id)}">Definição</label>
+            <textarea id="edit-definition-${h(item.id)}" class="field-input" data-field="edit-definition" rows="4">${h(data.definition || '')}</textarea>
+            <div class="button-row">
+              <button type="button" class="control" data-action="save-term-edit" data-record="${h(item.id)}">Salvar alterações</button>
+              <button type="button" class="control" data-action="cancel-edit" data-kind="term">Cancelar</button>
+            </div>
+          </div>`
+        : `<p class="record-text" dir="auto">${h(data.definition || '')}</p>`;
+      const actions = deleting
+        ? `<div class="warning" role="alert">
+            <p>Confirmar exclusão deste termo? A âncora e a definição serão removidas.</p>
+            <div class="button-row">
+              <button type="button" class="control" data-action="confirm-delete" data-kind="term" data-record="${h(item.id)}">Excluir definitivamente</button>
+              <button type="button" class="control" data-action="cancel-delete" data-kind="term">Cancelar</button>
+            </div>
+          </div>`
+        : `<div class="button-row">
+            ${anchor ? `<button type="button" class="control" data-action="open-record-source" data-anchor="${anchorRef(anchor)}">Ver no contexto</button>` : ''}
+            <button type="button" class="control" data-action="edit-term" data-record="${h(item.id)}">Editar</button>
+            <button type="button" class="control" data-action="ask-delete" data-kind="term" data-record="${h(item.id)}">Excluir</button>
+          </div>`;
       return `<article class="record-card">
-        <div class="record-head"><h3>${h(data.term || '')}</h3>${data.anchorStatus === 'needs_review' ? '<span class="badge">Revisão pendente</span>' : ''}</div>
+        <div class="record-head"><h3>${h(data.term || '')}</h3>${review ? '<span class="badge">Revisão pendente</span>' : ''}</div>
         <p class="quote">${h(anchor?.exact || 'Trecho indisponível')}</p>
-        ${data.anchorStatus === 'needs_review' ? `<p class="warning">Trecho anterior preservado: “${h(anchor?.exact || '')}”.</p>` : ''}
-        <p class="record-text" dir="auto">${h(data.definition || '')}</p>
-        ${anchor ? `<button type="button" class="control" data-action="open-record-source" data-anchor="${anchorRef(anchor)}">Ver no contexto</button>` : ''}
+        ${review ? `<p class="warning">Trecho anterior preservado: “${h(anchor?.exact || '')}”.</p>` : ''}
+        <p class="meta-line">Revisão do registro: ${Number(item.revision) || 0}${anchor ? ` · bloco ${h(anchor.elementId)} · posições ${anchor.start}–${anchor.end}` : ''}</p>
+        ${body}
+        ${actions}
       </article>`;
-    }).join('') : `<p class="muted">${recordErrors.get('term') ? `Vocabulário indisponível: ${h(recordErrors.get('term'))}` : 'Nenhum termo salvo.'}</p>`;
+    }).join('');
+    let content = renderJournalSearch('term', termQuery, filtered.length, terms.length);
+    if (!terms.length) content += `<p class="muted">${recordErrors.get('term') ? `Vocabulário indisponível: ${h(recordErrors.get('term'))}` : 'Nenhum termo salvo.'}</p>`;
+    else if (!filtered.length) content += `<p class="muted">Nenhum termo encontrado.</p>`;
+    else content += records;
+    if (recordErrors.get('term') && terms.length) content += `<p class="warning">Leitura parcial: ${h(recordErrors.get('term'))}</p>`;
     return sectionWrap('terms', 'Vocabulário', terms.length, content);
   }
 
   function renderObservationsSection(): string {
-    const content = observations.length ? observations.map(item => {
-      const target = targetOf(item.target);
-      return `<article class="record-card">
-        <div class="record-head"><h3>Observação</h3><span class="badge">${h(item.status || 'aberta')}</span></div>
-        <p class="quote">${h(target?.exact || 'Trecho indisponível')}</p>
-        <p class="record-text" dir="auto">${h(item.text || '')}</p>
-        ${item.result ? `<p class="muted">Resultado: ${h(item.result)}</p>` : ''}
+    const groups = new Map<string, ObservationGroup>();
+    for (const item of observations) {
+      const target = targetOf(item?.target);
+      const key = target ? anchorKey(target) : 'sem-alvo';
+      let group = groups.get(key);
+      if (!group) { group = { target, items: [] }; groups.set(key, group); }
+      group.items.push(item);
+    }
+    const content = groups.size ? [...groups.values()].map(group => {
+      const observationsHtml = group.items.map(item => {
+        const author = item.authorId || item.author_id || item.account_id || 'Autoria não informada';
+        const status = OBSERVATION_STATUS[item.status] || item.status || 'Estado não informado';
+        return `<article class="observation-item">
+          <div class="record-head"><h4>${h(author)}</h4><span class="badge">${h(status)}</span></div>
+          <p class="record-text" dir="auto">${h(item.text || '')}</p>
+          ${item.result ? `<p class="muted">Resultado: ${h(item.result)}</p>` : '<p class="muted">Sem resultado registrado.</p>'}
+        </article>`;
+      }).join('');
+      const target = group.target;
+      return `<article class="observation-group">
+        <div class="record-head"><h3>${target ? 'Passagem' : 'Sem alvo declarado'}</h3><span class="badge">${group.items.length} observação(ões)</span></div>
+        ${target ? `<p class="quote" dir="auto">${h(target.exact)}</p>
+          <p class="meta-line">${h(metaFor(target.sourceId,target.sourceRevision).title)} · ${h(target.locator||"Passagem selecionada")}</p>
+          <button type="button" class="control" data-action="open-record-source" data-anchor="${anchorRef(target)}">Ver no contexto</button>` : '<p class="muted">O registro não declara alvo; não foi agrupado por similaridade.</p>'}
+        ${observationsHtml}
       </article>`;
     }).join('') : `<p class="muted">${recordErrors.get('observations') ? `Observações indisponíveis: ${h(recordErrors.get('observations'))}` : 'Nenhuma observação registrada.'}</p>`;
-    return sectionWrap('observations', 'Observações', observations.length, content);
+    return sectionWrap('observations', 'Observações', observations.length, `<p class="muted">${observations.length} observações em ${groups.size} passagens.</p>${content}`);
   }
 
   function renderCommentsSection(): string {
@@ -1187,6 +1510,37 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
     return `<section class="reader-card"><h2>Fontes de ${h(unit.title)}</h2><p class="muted">${groups.length} passagem(ns) agrupada(s). Nenhum alinhamento é inferido.</p></section>${articles}`;
   }
 
+  function renderEditionsSection(tab: ReaderTab): string {
+    const unitId = sourceUnits.get(tab.id) || currentUnitId;
+    if (unitId && !contentCache.has(unitId) && !contentErrors.has(unitId)) ensureContent(unitId);
+    const hasAnchor = Boolean(tab.anchor);
+    const targets = hasAnchor && tab.anchorStatus !== 'needs_review' ? editionTargetsFor(tab) : [];
+    const targetList = targets.length
+      ? targets.map(target => {
+          const meta = metaFor(target.anchor.sourceId, target.anchor.sourceRevision);
+          return `<article class="edition-target">
+            <div class="record-head"><h3>${h(meta.title)}</h3><span class="badge">${h(RELATION[target.relation] || target.relation)}</span></div>
+            <p class="meta-line">${h(target.anchor.locator||"Passagem correspondente")}</p>
+            <p class="quote" dir="auto">${h(target.anchor.exact)}</p>
+            <button type="button" class="control" data-action="open-edition" data-anchor="${anchorRef(target.anchor)}">Abrir edição vinculada</button>
+          </article>`;
+        }).join('')
+      : `<p class="muted">${hasAnchor ? 'Não há correspondência preparada com outra edição para esta passagem.' : 'Sem âncora verificada nesta fonte. A troca por vínculo está indisponível.'}</p>`;
+    const manualOptions = sourceIndex.map(entry => `<option value="${h(entry.id)}|${entry.revision}" ${(entry.id === tab.objectId && entry.revision === tab.revision) ? 'selected' : ''}>${h(entry.title)} · revisão ${entry.revision}</option>`).join('');
+    const manual = manualOptions
+      ? `<div class="manual-source">
+          <label class="field-label" for="manual-source">Navegar outra fonte manualmente</label>
+          <select id="manual-source" class="field-select" data-role="manual-source">${manualOptions}</select>
+          <button type="button" class="control" data-action="open-manual-source" data-tab="${h(tab.id)}">Abrir fonte manualmente</button>
+          <p class="muted">A navegação manual abre a fonte na primeira página; nenhuma posição ou âncora é transferida.</p>
+        </div>`
+      : '<p class="muted">Nenhuma outra fonte identificada no índice.</p>';
+    return `<details class="edition-panel"><summary>Outras edições · ${targets.length} correspondências</summary>
+      ${targetList}
+      ${manual}
+    </details>`;
+  }
+
   function renderSourceTab(tab: ReaderTab): string {
     const offset = sourceOffsets.get(tab.id) || 0;
     const key = pageKey(tab.objectId, tab.revision, offset, SOURCE_LIMIT);
@@ -1210,6 +1564,7 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
       <div class="record-head"><h2>${h(meta.title || page.title || tab.title)}</h2><span class="badge">${h(NATURE[meta.nature || page.nature] || meta.nature || page.nature || 'Natureza não informada')}</span></div>
       <p class="meta-line">${(meta.language || page.language) ? `Idioma: ${h(meta.language || page.language)} · ` : ''}Revisão ${h(tab.revision)}</p>
       ${review ? `<p class="warning">Âncora necessita revisão. Trecho anterior preservado: “${h(tab.anchor?.exact || '')}”.</p>` : ''}
+      ${renderEditionsSection(tab)}
       <div class="source-blocks">${blocks || '<p class="muted">Nenhum bloco nesta página.</p>'}</div>
       <div class="button-row">
         <button type="button" class="control" data-action="capture-selection">Usar seleção</button>
@@ -1333,6 +1688,57 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
         return;
       }
       case 'save-reply': await saveReply(button); return;
+      case 'open-edition': {
+        const anchor = uiAnchors.get(button.dataset.anchor || '');
+        if (!anchor) { announce('Alvo de edição indisponível.'); return; }
+        await openEdition(anchor); return;
+      }
+      case 'open-manual-source': {
+        const tab = activeTab();
+        if (!tab || tab.kind !== 'source') return;
+        openManualSource(tab); return;
+      }
+      case 'edit-note': {
+        editingNoteId = button.dataset.record || null;
+        editingTermId = null;
+        confirmDelete = null;
+        pendingFocus = '[data-field="edit-note-text"]';
+        render(); return;
+      }
+      case 'edit-term': {
+        editingTermId = button.dataset.record || null;
+        editingNoteId = null;
+        confirmDelete = null;
+        pendingFocus = '[data-field="edit-term"]';
+        render(); return;
+      }
+      case 'cancel-edit': {
+        if (button.dataset.kind === 'note') editingNoteId = null; else editingTermId = null;
+        pendingFocus = button.dataset.kind === 'note'
+          ? '[data-action="toggle-section"][data-section="notes"]'
+          : '[data-action="toggle-section"][data-section="terms"]';
+        render(); return;
+      }
+      case 'ask-delete': {
+        const kind = button.dataset.kind === 'term' ? 'term' : 'note';
+        const recordId = button.dataset.record || '';
+        confirmDelete = `${kind}:${recordId}`;
+        editingNoteId = null;
+        editingTermId = null;
+        pendingFocus = `[data-action="confirm-delete"][data-kind="${kind}"][data-record="${recordId}"]`;
+        render(); return;
+      }
+      case 'cancel-delete': {
+        confirmDelete = null;
+        pendingFocus = `[data-action="toggle-section"][data-section="${button.dataset.kind === 'term' ? 'terms' : 'notes'}"]`;
+        render(); return;
+      }
+      case 'confirm-delete': {
+        const kind = button.dataset.kind === 'term' ? 'term' : 'note';
+        await deleteRecord(kind, button.dataset.record || ''); return;
+      }
+      case 'save-note-edit': await saveNoteEdit(button.dataset.record || ''); return;
+      case 'save-term-edit': await saveTermEdit(button.dataset.record || ''); return;
       default: return;
     }
   }
@@ -1349,6 +1755,12 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
   rootEl.addEventListener('change', event => {
     const target = event.target as HTMLElement | null;
     if (target?.matches('[data-role="unit-select"]')) switchUnit((target as HTMLSelectElement).value);
+  }, { signal });
+
+  rootEl.addEventListener('input', event => {
+    const target = event.target as HTMLInputElement | null;
+    if (target?.matches('[data-role="note-search"]')) { noteQuery = target.value; render(); }
+    else if (target?.matches('[data-role="term-search"]')) { termQuery = target.value; render(); }
   }, { signal });
 
   rootEl.addEventListener('scroll', event => {
@@ -1377,10 +1789,12 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
 
   document.addEventListener('visibilitychange', () => {
     visible = document.visibilityState === 'visible';
+    flushTime(true,visible?'resume':'pause');if(!visible)void saveNow();
     lastTick = Date.now();
   }, { signal });
   window.addEventListener('focus', () => { focused = true; lastTick = Date.now(); }, { signal });
-  window.addEventListener('blur', () => { focused = false; lastTick = Date.now(); }, { signal });
+  window.addEventListener('blur', () => { focused = false; lastTick = Date.now();flushTime(true,'pause'); }, { signal });
+  for(const event of ['pagehide','um-flush'])window.addEventListener(event,()=>{flushTime(true,'pause');void saveNow();},{signal});
 
   rootEl.innerHTML = `<section class="reader-shell"><div class="reader-loading" role="status">Carregando leitor…</div></section>`;
   try {
@@ -1393,7 +1807,7 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
 
   return () => {
     if (!active) return;
-    flushTime(true);
+    flushTime(true,'close');
     void saveNow();
     active = false;
     controller.abort();

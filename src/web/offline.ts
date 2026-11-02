@@ -44,7 +44,7 @@ interface StoredHead {
 export interface OfflineStore {
   install(manifest: Manifest, fetchFile: (file: FileEntry) => Promise<Uint8Array>): Promise<void>;
   package(projectId: string, personal: boolean): Promise<{ manifest: Manifest; files: Record<string, Uint8Array> } | null>;
-  enqueue(operation: QueuedOperation): Promise<void>;
+  enqueue(operation: QueuedOperation, records?: Record<string,unknown>): Promise<void>;
   operations(): Promise<QueuedOperation[]>;
   sync(
     send: (operation: QueuedOperation) => Promise<Receipt>,
@@ -154,8 +154,8 @@ function classifyFailure(error: unknown): "conflict" | "error" | "uncertain" {
   const value = error as Record<string, unknown> | null;
   const code = typeof value?.code === "string" ? value.code : undefined;
   const status = typeof value?.status === "number" ? value.status : undefined;
-  if (code === "CONFLICT") return "conflict";
-  if (code === "NOT_FOUND" || status === 401 || status === 403) return "error";
+  if (code === "CONFLICT" || status === 409) return "conflict";
+  if (code === "NOT_FOUND" || status && status>=400&&status<500&&status!==429) return "error";
   return "uncertain";
 }
 
@@ -409,7 +409,7 @@ class OfflineStoreImpl implements OfflineStore {
     return { manifest: pkg.manifest, files };
   };
 
-  enqueue = async (operation: QueuedOperation): Promise<void> => {
+  enqueue = async (operation: QueuedOperation, records:Record<string,unknown>={}): Promise<void> => {
     this.assertOpen();
     const raw = operation as unknown as Record<string, unknown>;
     if (!isPlainObject(raw)) fail("INVALID_OPERATION", "operation must be an object");
@@ -445,7 +445,7 @@ class OfflineStoreImpl implements OfflineStore {
       this.prefix,
       () =>
         new Promise<void>((resolve, reject) => {
-          const tx = this.db.transaction("operations", "readwrite");
+          const tx = this.db.transaction(["operations","records"], "readwrite");
           const store = tx.objectStore("operations");
           let conflict: AppError | null = null;
           const request = store.get(key);
@@ -453,6 +453,7 @@ class OfflineStoreImpl implements OfflineStore {
             const existing = request.result as OperationRow | undefined;
             if (!existing) {
               store.put(next);
+              for(const [recordId,value]of Object.entries(records))tx.objectStore('records').put({key:this.recordKey(recordId),id:recordId,value});
               return;
             }
             if (!sameIntent(existing, intent)) {

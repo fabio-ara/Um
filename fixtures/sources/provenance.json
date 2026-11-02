@@ -1,0 +1,18 @@
+{
+  "perseus": {
+    "files": [
+      "apology-grc2.xml",
+      "apology-eng2.xml"
+    ],
+    "revision": "a6eb0cc3e6f6e382934a2c8b33577d2fb4371e00",
+    "license": "CC-BY-SA-4.0",
+    "repository": "https://github.com/PerseusDL/canonical-greekLit"
+  },
+  "map": {
+    "evidence": "https://www.naturalearthdata.com/about/terms-of-use/",
+    "revision": "ca96624a56bd078437bca8184e78163e5039ad19",
+    "license": "Public domain",
+    "repository": "https://github.com/nvkelso/natural-earth-vector",
+    "file": "public/map/land.geojson"
+  }
+}

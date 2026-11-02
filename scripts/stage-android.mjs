@@ -1,0 +1,12 @@
+import {resolve,relative} from 'node:path';
+import {execFileSync} from 'node:child_process';
+import {writeFileSync,mkdirSync} from 'node:fs';
+const root=resolve('.'),output=resolve(process.argv[2]),allowed=resolve('android/app/build/generated/web-assets');
+if(output!==allowed)throw Error('Destino Android inesperado.');
+const release=process.argv[3]==='release',origin=process.env.VITE_API_ORIGIN||(release?'':'http://127.0.0.1:4417');
+const url=new URL(origin);if(release&&(url.protocol!=='https:'||['localhost','127.0.0.1','10.0.2.2'].includes(url.hostname)))throw Error('Release exige backend HTTPS verificado.');
+const head=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+const dirty=execFileSync('git',['status','--porcelain'],{encoding:'utf8'}).trim().length>0;
+if(release&&(dirty||process.env.UM_CANDIDATE_SHA!==head))throw Error('Release exige candidata identificada e sem bytes pendentes.');
+execFileSync(process.execPath,['node_modules/vite/bin/vite.js','build'],{stdio:'inherit',env:{...process.env,VITE_BASE:'./',VITE_API_ORIGIN:origin,UM_BUILD_OUT:relative(root,resolve(output,'www'))}});
+mkdirSync(output,{recursive:true});writeFileSync(resolve(output,'build-identity.json'),JSON.stringify({product:'Um',package:'com.fabioara.um'+(release?'':'.debug'),head,dirty,kind:release?'release':'debug',apiOrigin:origin},null,2)+'\n');

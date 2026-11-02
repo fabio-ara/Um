@@ -10,7 +10,7 @@ import {getFile,putFile} from './files.ts';
 import {projectRow} from './projects.ts';
 
 export type ContentIndex={id:string;kind:'unit'|'resource'|'choice'|'coverage';title:string;file:string;unitId?:string;position?:number};
-export type PublishedManifest=Manifest & {baseRevision:number;index:ContentIndex[];sourceIndex:{id:string;revision:number;title:string;path:string;original:string|null}[];inspection:ContentBundle['inspection']};
+export type PublishedManifest=Manifest & {baseRevision:number;index:ContentIndex[];sourceIndex:{id:string;revision:number;title:string;metadata?:Record<string,any>;path:string;original:string|null}[];inspection:ContentBundle['inspection']};
 export const publicationSchemas={
  bundle_publish:z.strictObject({operationId:id,expectedRevision:z.number().int().nonnegative(),bundle:bundleSchema,reasons:z.array(reasonSchema).max(4000).default([])}),
  bundle_get:z.strictObject({projectId:id,profileId:id.nullable(),revision:revision.optional()}),
@@ -79,7 +79,7 @@ export async function publicationTask(identity:Identity,task:keyof typeof public
   // Referenced source files join the package only when their rights allow offline use.
   for(const sourceId of sources.keys()){
    const s=(await db.query('select s.original_file,r.body_file from um.sources s join um.source_revisions r on r.source_id=s.id where s.id=$1 and r.revision=$2',[sourceId,sources.get(sourceId)!.revision])).rows[0];
-   manifest.sourceIndex.push({id:sourceId,revision:sources.get(sourceId)!.revision,title:sources.get(sourceId)!.metadata.title,path:s.body_file,original:sources.get(sourceId)!.metadata.rights.offlineAllowed?s.original_file:null});
+   manifest.sourceIndex.push({id:sourceId,revision:sources.get(sourceId)!.revision,title:sources.get(sourceId)!.metadata.title,metadata:sources.get(sourceId)!.metadata,path:s.body_file,original:sources.get(sourceId)!.metadata.rights.offlineAllowed?s.original_file:null});
    const rows=(await db.query('select * from um.files where path=any($1::text[]) and offline_allowed',[[s.body_file,s.original_file].filter(Boolean)])).rows;
    for(const f of rows)manifest.files.push({path:f.path,sha256:f.sha256,bytes:Number(f.bytes),mediaType:f.media_type,offlineAllowed:f.offline_allowed});
   }
