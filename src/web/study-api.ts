@@ -1,5 +1,5 @@
 import {openOffline,type OfflineStore} from './offline.ts';
-import {remote,fetchFile} from './api.ts';
+import {remote as sessionRemote,fetchFile as sessionFile,requireAccount} from './api.ts';
 import {AppError} from '../errors.ts';
 import {makeAttempt,repeatChoices} from '../editorial.ts';
 import {effectiveAnswers,validateSubmission} from '../forms.ts';
@@ -30,7 +30,11 @@ function projectionFor(op:QueuedOperation,kind:string):ReaderRecord|null{
 }
 function formTask(op:QueuedOperation):boolean{return op.task==='form_draft'||op.task==='form_submit';}
 export async function studyClient(accountId:string,profileId:string,projectId?:string){
- const store=await openOffline(accountId,profileId);let syncing:Promise<void>|null=null;
+ const store=await openOffline(accountId,profileId);let syncing:Promise<void>|null=null,closed=false;
+ const remote=(task:string,args:Record<string,unknown>)=>sessionRemote(task,args,accountId);
+ const fetchFile=(path:string)=>sessionFile(path,accountId);
+ async function active(){if(closed)throw new AppError('UNAUTHENTICATED','Este estudo foi fechado. Reabra na conta atual.',401);await requireAccount(accountId);if(closed)throw new AppError('UNAUTHENTICATED','Este estudo foi fechado.',401);}
+ async function clearStore(){if(!closed)await store.clear();}
  const recordKey=(kind:string,scope=projectId)=>'project:'+scope+':records:'+kind;
  const cacheKey=(task:string,args:any)=>'read:'+task+':'+stable(args);
  async function projectedResult(task:string,a:any){
@@ -142,15 +146,16 @@ export async function studyClient(accountId:string,profileId:string,projectId?:s
   }
  }
  async function sync(){
-  if(!navigator.onLine)return;if(syncing)return syncing;
+  await active();if(!navigator.onLine)return;if(syncing)return syncing;
   syncing=(async()=>{
    let authFailure:AppError|null=null;
-   if(profileId!=='account')try{await remote('profile_get',{profileId});}catch(e){if(isAuth(e)||(e instanceof AppError&&e.status===404)){await store.clear();throw e;}throw e;}
+   if(profileId!=='account')try{await remote('profile_get',{profileId});}catch(e){if(isAuth(e)||(e instanceof AppError&&e.status===404)){await clearStore();throw e;}throw e;}
    const receipts:Receipt[]=[];
    const send=async(op:QueuedOperation)=>{try{const receipt=await remote(op.task,op.arguments) as Receipt;receipts.push(receipt);return receipt;}catch(e){if(isAuth(e)&&!authFailure)authFailure=e as AppError;throw e;}};
    const recover=async(id:string)=>{try{const receipt=await remote('operation_get',{operationId:id}) as Receipt|null;if(receipt)receipts.push(receipt);return receipt;}catch(e){if(isAuth(e)&&!authFailure)authFailure=e as AppError;throw e;}};
    try{await store.sync(send,recover);}catch(e){if(isAuth(e))authFailure=e as AppError;else throw e;}
-   if(authFailure){await store.clear();throw authFailure;}
+   if(authFailure){await clearStore();throw authFailure;}
+   await active();
    // The store lock is released here, so record writes and projection
    // reconciliation never run inside the sync callbacks.
    const ops=await store.operations(),byId=new Map<string,QueuedOperation>(ops.map(op=>[op.id,op]));
@@ -176,6 +181,7 @@ export async function studyClient(accountId:string,profileId:string,projectId?:s
   throw new AppError('OFFLINE_MISSING','Este conteúdo ainda não está disponível neste dispositivo. Conecte-se e prepare o estudo offline.',503);
  }
  const api:StudyApi=async(task,args)=>{
+  await active();
   if(writable.has(task)&&projectId){
    const op=args.operationId as string,existing=(await store.operations()).find(x=>x.id===op);
    const same=Boolean(existing&&existing.task===task&&stable(existing.arguments)===stable(args));
@@ -197,6 +203,7 @@ export async function studyClient(accountId:string,profileId:string,projectId?:s
     projected=await projectedResult(task,args);
    }
    if(navigator.onLine)try{await sync();}catch(e){if(isAuth(e))throw e;}
+   await active();
    const state=(await store.operations()).find(x=>x.id===op)!;
    if(state.state==='confirmed'){const receipt=await store.record('receipt:'+op);if(receipt)return receipt;return remote('operation_get',{operationId:op});}
    if(state.state==='conflict'||state.state==='error')throw new AppError(state.state==='conflict'?'CONFLICT':'REJECTED',state.error||'Operação não confirmada.',state.state==='conflict'?409:400);
@@ -205,15 +212,16 @@ export async function studyClient(accountId:string,profileId:string,projectId?:s
   if(navigator.onLine)try{
    const result=await remote(task,args),merged=await reconcileRead(task,args,result);
    if(task!=='reader_records'&&task!=='form_get')await store.putRecord(cacheKey(task,args),merged);
+   await active();
    return merged;
   }catch(e){
    if(e instanceof AppError){
-    if(isAuth(e)){await store.clear();throw e;}
+    if(isAuth(e)){await clearStore();throw e;}
     if(e.status<500)throw e;
    }
   }
-  return packaged(task,args);
+  const result=await packaged(task,args);await active();return result;
  };
- async function download(){if(!projectId)throw Error('Estudo não selecionado.');try{await sync();const common=await remote('bundle_get',{projectId,profileId:null}) as PublishedManifest;await store.install(common,file=>fetchFile(file.path));try{const personal=await remote('bundle_get',{projectId,profileId}) as PublishedManifest;await store.install(personal,file=>fetchFile(file.path));}catch(e){if(!(e instanceof AppError&&e.status===404))throw e;}return {downloaded:true};}catch(e){if(isAuth(e))await store.clear();throw e;}}
- return {api,store,sync,download,close:()=>store.close()};
+ async function download(){await active();if(!projectId)throw Error('Estudo não selecionado.');try{await sync();const common=await remote('bundle_get',{projectId,profileId:null}) as PublishedManifest;await store.install(common,file=>fetchFile(file.path));try{const personal=await remote('bundle_get',{projectId,profileId}) as PublishedManifest;await store.install(personal,file=>fetchFile(file.path));}catch(e){if(!(e instanceof AppError&&e.status===404))throw e;}await active();return {downloaded:true};}catch(e){if(isAuth(e))await clearStore();throw e;}}
+ return {api,store,sync,download,close:()=>{closed=true;store.close();}};
 }
