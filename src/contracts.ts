@@ -38,7 +38,7 @@ export type Attempt = {id: string; profileId: string; questionId: string; questi
 export type ContentBundle = {projectId: string; revision: number; profileId: string | null; baseRevision: number; units: StudyUnit[]; resources: Resource[]; choices: Choice[]; coverage: Coverage[]; inspection: {kind: 'ai'; references: string[]; findings: string[]; completed: boolean};};
 export type FileEntry = {path: string; sha256: string; bytes: number; mediaType: string; offlineAllowed: boolean};
 export type Manifest = {format: 'um-package/1'; projectId: string; revision: number; profileId: string | null; files: FileEntry[]; sourceRevisions: Record<string, number>; publishedAt: string};
-export type ReaderTab = {id: string; kind: 'unit' | 'resource' | 'sources' | 'source'; title: string; objectId: string; revision: number; position: number; origin: Anchor | null; anchor: Anchor | null};
+export type ReaderTab = {id: string; kind: 'unit' | 'resource' | 'sources' | 'source'; title: string; objectId: string; revision: number; position: number; origin: Anchor | null; anchor: Anchor | null; anchorStatus?: 'verified' | 'needs_review'};
 export type ReaderState = {projectId: string; profileId: string; unitId: string; tabs: ReaderTab[]; activeTabId: string; revision: number};
 export type OperationState = 'local' | 'pending' | 'confirmed' | 'error' | 'conflict' | 'uncertain';
 export type Receipt<T = unknown> = {operationId: string; status: 'confirmed'; result: T; committedAt: string};

@@ -35,7 +35,7 @@ function ordered(value: unknown): unknown {
   if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => [k,ordered(v)]));
   return value;
 }
-export const contentHash = (value: unknown) => createHash('sha256').update(JSON.stringify(ordered(value))).digest('hex');
+export const contentHash = (value: unknown) => createHash('sha256').update(JSON.stringify(ordered(value))??'null').digest('hex');
 /** fn returns only object IDs/revisions. Sensitive content must be read through fresh authorization. */
 export async function operation<T>(db: Transaction, identity: Identity, operationId: string, task: string, args: unknown, fn: () => Promise<T>): Promise<Receipt<T>> {
   ensure(identity.permission === 'write', 'FORBIDDEN', 'Cliente autorizado somente para leitura.', 403);

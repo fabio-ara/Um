@@ -1,0 +1,41 @@
+import {test,after} from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID as uuid} from 'node:crypto';
+import {localContext} from './local-context.ts';
+import {execute} from '../src/service.ts';
+import {sourceView} from '../src/sources.ts';
+import {getFile} from '../src/files.ts';
+import type {Identity} from '../src/contracts.ts';
+const ctx=await localContext();after(ctx.close);
+test('padrão estável, duas tomadas pessoais, publicação atômica, snapshot e colaboração',async()=>{
+ const author=await ctx.account(),a=await ctx.account(),b=await ctx.account();
+ const invoke=(actor:Identity,task:any,args:any)=>execute(task,args,actor) as Promise<any>;
+ const projectId=(await invoke(author,'project_create',{operationId:uuid(),title:'Estudo sintético',metadata:{object:{kind:'theme',workIds:[],subject:'Argumento'},scope:'Fixture',language:'pt',audience:'Estudantes',configuration:{editorial:{},instructional:{}}}})).result.projectId;
+ const sourceId=(await invoke(author,'source_import',{operationId:uuid(),format:'text',text:'Examinar uma afirmação requer conferir suas razões. Um exemplo ajuda a distinguir afirmação e evidência.',metadata:{title:'Fonte de teste',language:'pt',nature:'original',extent:'fragment',authors:[],rights:{status:'permission',statement:'Fixture própria',evidence:'Teste de integração local',offlineAllowed:true},provenance:'Criada para teste'}})).result.sourceId;
+ await invoke(author,'source_attach',{operationId:uuid(),projectId,sourceId});const source=await sourceView(author,sourceId);
+ const anchor={sourceId,sourceRevision:1,elementId:source.blocks[0].id,start:0,end:8,exact:'Examinar',prefix:'',suffix:''};
+ const coverageId=uuid(),unitId=uuid(),link={id:uuid(),from:[anchor],to:[anchor],relation:'supports',provenance:{kind:'source',references:['Fixture'],limitations:[]}};
+ const standard={projectId,revision:1,profileId:null,baseRevision:1,units:[{id:unitId,title:'Razões',body:'Estudo comum sintético.',references:[link],knowledgeTargets:[coverageId],provenance:[link.provenance]}],resources:[],choices:[],coverage:[{id:coverageId,description:'Distinguir evidência',unitIds:[unitId],sourceAnchors:[anchor],practiceIds:[]}],inspection:{kind:'ai',references:['Inspeção sintética de fixture'],findings:[],completed:true}};
+ const publication={operationId:uuid(),expectedRevision:0,bundle:standard};await invoke(author,'bundle_publish',publication);await invoke(author,'bundle_publish',publication);
+ const baseBefore=await invoke(author,'bundle_get',{projectId,profileId:null});const profiles:string[]=[],questionIds:string[]=[];
+ for(const [index,student]of [a,b].entries()){
+  const profileId=(await invoke(author,'profile_create',{operationId:uuid(),fields:{name:`Sintético ${index}`}})).result.profileId;profiles.push(profileId);
+  const invite=await invoke(author,'invite_create',{operationId:uuid(),profileId});await invoke(student,'invite_accept',{operationId:uuid(),token:invite.result.token});await invoke(author,'participation_add',{operationId:uuid(),projectId,profileId});
+  const formId=uuid();await invoke(author,'form_save',{operationId:uuid(),expectedRevision:0,definition:{id:formId,revision:1,projectId,profileId,questions:[{id:'support',type:'single_choice',prompt:'Qual apoio?',required:true,options:[{id:'case',label:'Caso concreto'},{id:'comparison',label:'Comparação'}]}],purposeByQuestion:{support:'Escolher representação'},planningReference:'Plano da fixture',maxQuestions:6}});await invoke(author,'form_publish',{operationId:uuid(),formId,expectedRevision:1});
+  const submissionId=(await invoke(student,'form_submit',{operationId:uuid(),formId,formRevision:1,answers:{support:index?'comparison':'case'}})).result.submissionId;
+  const resourceId=uuid(),questionId=uuid();questionIds.push(questionId);const personal={projectId,profileId,revision:1,baseRevision:1,units:[],resources:[{id:resourceId,projectId,profileId,baseRevision:1,type:index?'contrast':'example',title:'Apoio',purpose:'Apoiar distinção',targets:[anchor],sources:[anchor],body:index?'Compare uma testemunha com duas medições independentes.':'Considere uma balança cujo resultado pode ser conferido.',appliedConfiguration:{representation:index?'comparison':'case'},inspection:'ai_inspected'}],choices:[{id:questionId,revision:1,unitId,profileId,position:0,prompt:'Qual opção confere uma razão?',options:[{id:'a',text:'Conferir evidência',feedback:'A evidência permite conferir a afirmação.'},{id:'b',text:'Repetir a afirmação',feedback:'Repetição não acrescenta evidência.'}],correctOptionId:'a',coverageTargets:[coverageId],sources:[anchor]}],coverage:[{id:coverageId,description:'Distinguir evidência',unitIds:[unitId],sourceAnchors:[anchor],practiceIds:[questionId]}],inspection:standard.inspection};
+  personal.resources[0].type=index?'contrast':'analogy';
+  await invoke(author,'bundle_publish',{operationId:uuid(),expectedRevision:0,bundle:personal,reasons:[resourceId,questionId].map(resourceId=>({resourceId,submissionId,submissionRevision:1,questionIds:['support'],rationale:'Representação alinhada à resposta sintética.'}))});
+ }
+ assert.deepEqual(await invoke(author,'bundle_get',{projectId,profileId:null}),baseBefore);
+ await assert.rejects(invoke(b,'bundle_get',{projectId,profileId:profiles[0]}),/indisponível/);
+ const own=await invoke(a,'bundle_get',{projectId,profileId:profiles[0]});assert.ok(!JSON.stringify(own).includes('rationale'));await assert.rejects(getFile(b,own.index[0].file),/indisponível/);
+ const attempt={operationId:uuid(),projectId,profileId:profiles[0],bundleRevision:1,questionId:questionIds[0],questionRevision:1,optionId:'b',sequenceId:uuid(),createdAt:new Date().toISOString()};const answered=await invoke(a,'attempt_submit',attempt);assert.equal(answered.result.correct,false);assert.ok(answered.result.feedback.includes('Repetição'));await invoke(a,'attempt_submit',attempt);
+ assert.equal((await invoke(a,'reader_records',{projectId,profileId:profiles[0],kind:'attempt'})).items.length,1);assert.equal((await invoke(a,'choice_sequence',{projectId,profileId:profiles[0],errorsOnly:true})).questions.length,1);
+ const noteId=uuid();await invoke(a,'note_save',{operationId:uuid(),projectId,profileId:profiles[0],recordId:noteId,expectedRevision:0,anchor,text:'Minha nota sintética'});assert.equal((await invoke(b,'comment_list',{projectId})).items.length,0);
+ const shared=await invoke(a,'note_share',{operationId:uuid(),projectId,profileId:profiles[0],recordId:noteId,expectedRevision:1});assert.equal((await invoke(b,'comment_list',{projectId})).items[0].account_id,a.id);await assert.rejects(invoke(b,'comment_edit',{operationId:uuid(),projectId,commentId:shared.result.commentId,text:'Outra autoria'}),/indisponível/);
+ const invalid=structuredClone(standard);invalid.revision=2;invalid.baseRevision=2;invalid.units[0].references[0].to[0].exact='Errado';await assert.rejects(invoke(author,'bundle_publish',{operationId:uuid(),expectedRevision:1,bundle:invalid}));assert.equal((await invoke(a,'bundle_get',{projectId,profileId:null})).revision,1);
+ await invoke(author,'bundle_publish',{operationId:uuid(),expectedRevision:1,bundle:{...standard,revision:2,baseRevision:2,units:[{...standard.units[0],body:'Texto comum corrigido.'}]}});
+ const attempts=(await invoke(a,'reader_records',{projectId,profileId:profiles[0],kind:'attempt'})).items;assert.equal(attempts[0].data.snapshot.prompt,'Qual opção confere uma razão?');
+ await invoke(a,'profile_control',{operationId:uuid(),profileId:profiles[0],action:'revoke_creator'});assert.equal((await invoke(author,'reasons_get',{projectId,profileId:profiles[0]})).items.length,0);
+});

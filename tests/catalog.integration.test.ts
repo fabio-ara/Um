@@ -1,0 +1,21 @@
+import {test,after} from 'node:test';
+import assert from 'node:assert/strict';
+import {randomUUID as uuid} from 'node:crypto';
+import {localContext} from './local-context.ts';
+import {catalogTask} from '../src/catalog.ts';
+const ctx=await localContext();after(ctx.close);
+test('catálogo efetivo isolado e fusão transacional redirecionam obras sem mudar texto-fonte',async()=>{
+ const author=await ctx.account(),other=await ctx.account();
+ const create=(kind:string,name:string)=>({id:uuid(),kind,labels:{pt:name},aliases:[],authorIds:[],regions:[],traditions:[],disciplines:[],periods:[],dates:{start:null,end:null,approximate:false},locations:[],metadata:{}});
+ const a=create('author','Autora A'),b=create('author','Autora B'),work={...create('work','Obra'),authorIds:[a.id,b.id],authorship:'multiple'};
+ for(const entity of [a,b,work])await catalogTask(author,'library_save',{operationId:uuid(),entity,expectedRevision:0});
+ assert.equal((await catalogTask(other,'library_search',{}) as any).items.length,0);
+ await catalogTask(author,'library_rename',{operationId:uuid(),entityId:a.id,expectedRevision:1,language:'pt',label:'Autora A corrigida'});
+ await catalogTask(author,'library_merge',{operationId:uuid(),fromIds:[b.id],targetId:a.id});
+ const stored=await catalogTask(author,'library_get',{entityId:work.id}) as any;assert.deepEqual(stored.entity.authorIds,[a.id]);assert.equal(stored.entity.authorship,'multiple');
+ assert.equal((await catalogTask(author,'library_search',{authorIds:[a.id]}) as any).items.length,1);assert.equal((await catalogTask(author,'library_search',{query:'Autora B'}) as any).items[0].id,a.id);
+ const first=create('author','Parte 1'),second=create('author','Parte 2');
+ await assert.rejects(catalogTask(author,'library_split',{operationId:uuid(),sourceId:a.id,replacements:[first,second],assignments:{}}),/destino/);
+ await catalogTask(author,'library_split',{operationId:uuid(),sourceId:a.id,replacements:[first,second],assignments:{[work.id]:second.id}});
+ assert.deepEqual((await catalogTask(author,'library_get',{entityId:work.id}) as any).entity.authorIds,[second.id]);
+});

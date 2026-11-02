@@ -1,0 +1,12 @@
+import {z} from 'zod';
+import {id,revision,anchorSchema} from './contracts.ts';
+const text=z.string().trim().min(1),body=text.max(200000);
+const ids=z.array(id).max(1000);
+export const provenanceSchema=z.strictObject({kind:z.enum(['source','translation','interpretation','controversy','example','reflection']),references:z.array(text).max(100),limitations:z.array(z.string()).max(100)});
+export const linkSchema=z.strictObject({id,from:z.array(anchorSchema).min(1).max(100),to:z.array(anchorSchema).min(1).max(100),relation:z.enum(['supports','interprets','contrasts','illustrates']),provenance:provenanceSchema});
+export const unitSchema=z.strictObject({id,title:text.max(500),body,references:z.array(linkSchema).max(100),knowledgeTargets:ids,provenance:z.array(provenanceSchema).min(1).max(100)});
+export const resourceSchema=z.strictObject({id,projectId:id,baseRevision:revision,profileId:id.nullable(),type:z.enum(['explanation','analogy','context','contrast','interpretation','reflection','vocabulary']),title:text.max(500),purpose:text.max(4000),targets:z.array(anchorSchema).min(1).max(100),body,sources:z.array(anchorSchema).min(1).max(100),appliedConfiguration:z.record(z.string(),z.unknown()),inspection:z.enum(['pending','ai_inspected'])});
+export const choiceSchema=z.strictObject({id,revision,unitId:id,profileId:id,position:z.number().int().nonnegative(),prompt:text.max(20000),options:z.array(z.strictObject({id:text.max(100),text:text.max(10000),feedback:text.max(10000)})).min(2).max(10),correctOptionId:text.max(100),coverageTargets:ids.min(1),sources:z.array(anchorSchema).min(1).max(100)});
+export const coverageSchema=z.strictObject({id,description:text.max(4000),unitIds:ids,sourceAnchors:z.array(anchorSchema).max(100),practiceIds:ids,gap:z.string().max(4000).optional()});
+export const bundleSchema=z.strictObject({projectId:id,revision,profileId:id.nullable(),baseRevision:z.number().int().nonnegative(),units:z.array(unitSchema).max(1000),resources:z.array(resourceSchema).max(2000),choices:z.array(choiceSchema).max(2000),coverage:z.array(coverageSchema).min(1).max(2000),inspection:z.strictObject({kind:z.literal('ai'),references:z.array(text).min(1).max(1000),findings:z.array(text).max(1000),completed:z.boolean()})});
+export const reasonSchema=z.strictObject({resourceId:id,submissionId:id,submissionRevision:revision,questionIds:z.array(text).min(1).max(64),rationale:text.max(20000)});

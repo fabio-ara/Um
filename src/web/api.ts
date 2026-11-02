@@ -1,0 +1,9 @@
+import {createClient,type Session} from '@supabase/supabase-js';
+import {AppError} from '../errors.ts';
+declare const __UM_API__:string;
+export const apiOrigin=__UM_API__.replace(/\/$/,'');
+const configKey='um-public-config:'+apiOrigin;
+const settings=await fetch(apiOrigin+'/api/config',{signal:AbortSignal.timeout(8000)}).then(async r=>{if(!r.ok)throw Error('Serviço do Um indisponível.');const value=await r.json();localStorage.setItem(configKey,JSON.stringify(value));return value;}).catch(error=>{const cached=localStorage.getItem(configKey);if(cached)return JSON.parse(cached);throw error;});
+export const auth=createClient(settings.supabaseUrl,settings.publishableKey,{auth:{storageKey:'um-auth-v1',persistSession:true,autoRefreshToken:true,detectSessionInUrl:true}}).auth;
+export async function remote(task:string,args:Record<string,unknown>){const {data:{session}}=await auth.getSession();if(!session)throw new AppError('UNAUTHENTICATED','Entre na conta para continuar.',401);const r=await fetch(apiOrigin+'/api/'+encodeURIComponent(task),{method:'POST',headers:{Authorization:`Bearer ${session.access_token}`,'Content-Type':'application/json'},body:JSON.stringify(args)});let out:any;try{out=await r.json();}catch{throw new AppError('TRANSPORT','Não foi possível confirmar a resposta.',503);}if(!r.ok||!out.ok)throw new AppError(out.error?.code||'UNAVAILABLE',out.error?.message||'Serviço indisponível.',r.status,out.error?.details);return out.data;}
+export async function fetchFile(path:string){const {data:{session}}=await auth.getSession();if(!session)throw new AppError('UNAUTHENTICATED','Entre na conta.',401);const r=await fetch(apiOrigin+'/api/file/'+path,{headers:{Authorization:`Bearer ${session.access_token}`}});if(!r.ok)throw new AppError('FILE_UNAVAILABLE','Arquivo indisponível.',r.status);return new Uint8Array(await r.arrayBuffer());}
