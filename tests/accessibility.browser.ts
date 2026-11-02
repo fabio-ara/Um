@@ -12,6 +12,7 @@ test('primeira abertura sem configuração mostra erro acessível e permite tent
 
 test('dica icon-only por teclado e toque longo preserva a ação de toque curto',async({page,context})=>{
  await page.setViewportSize({width:320,height:844});await page.goto('/');
+ await expect(page.getByRole('button',{name:'Conexão e sincronização',exact:true})).toBeVisible();
  await page.keyboard.press('Tab');await expect(page.getByRole('link',{name:'Ir ao conteúdo'})).toBeFocused();
  await page.keyboard.press('Tab');await expect(page.getByRole('button',{name:'Conexão e sincronização',exact:true})).toBeFocused();
  await expect(page.getByRole('tooltip')).toHaveText('Conexão e sincronização');await page.keyboard.press('Escape');await expect(page.getByRole('tooltip')).toBeHidden();
