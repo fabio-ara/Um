@@ -51,7 +51,7 @@ export async function execute(name:TaskName,input:unknown,identity:Identity):Pro
   const a=systemSchemas[name as keyof typeof systemSchemas].parse(input) as any;
   if(name==='capabilities')return {program:'UM-20261101-v1',authoring:'ChatGPT Web/MCP',study:'Pages/Android',tasks:Object.keys(schemas).map(n=>({name:n,readOnly:readTasks.has(n),description:descriptions[n as TaskName]})),contracts:{offsets:'unicode-code-points-[start,end)',files:'openai/fileParams',receipts:'stable-operationId',personalization:'prepared-from-authorized-submission'},hostFileProof:'not-certified'};
   if(name==='account_grants')return accountClients(identity);
-  return transaction(identity,async db=>{
+  return await transaction(identity,async db=>{
    if(name==='operation_get'){
     const row=(await db.query('select task,result,committed_at from um.operations where account_id=$1 and id=$2',[identity.id,a.operationId])).rows[0];if(!row)return null;
     let result=row.result;
@@ -61,5 +61,5 @@ export async function execute(name:TaskName,input:unknown,identity:Identity):Pro
    ensure(!identity.clientId,'FORBIDDEN','Gerencie autorizações pela própria conta no aplicativo.',403);
    return operation(db,identity,a.operationId,name,a,async()=>{if(a.permission==='revoke')await db.query('delete from um.client_grants where account_id=$1 and client_id=$2',[identity.id,a.clientId]);else await db.query('insert into um.client_grants values($1,$2,$3) on conflict(account_id,client_id) do update set permission=excluded.permission',[identity.id,a.clientId,a.permission]);return {clientId:a.clientId,permission:a.permission};});
   });
- }catch(error){if(error instanceof z.ZodError)throw new AppError('VALIDATION','Parâmetros incompatíveis com o contrato.',400,error.issues.map(i=>({path:i.path,message:i.message})));throw error;}
+ }catch(error){if((error as any)?.code==='23503'&&(error as any)?.constraint==='client_grants_client_id_fkey')throw new AppError('NOT_FOUND','Cliente de autorização indisponível.',404);if(error instanceof z.ZodError)throw new AppError('VALIDATION','Parâmetros incompatíveis com o contrato.',400,error.issues.map(i=>({path:i.path,message:i.message})));throw error;}
 }

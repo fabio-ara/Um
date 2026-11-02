@@ -9,11 +9,11 @@ export async function mountConsent(root:HTMLElement,requestId:string):Promise<()
  root.innerHTML='<section class="card"><h1>Conectar ao Um</h1><p role="status">Conferindo solicitação…</p></section>';
  async function json(response:Response){const value=await response.json();if(!response.ok)throw Error(value.error_description||'Não foi possível continuar a autorização.');return value;}
  let info:any;
- try{info=await json(await fetch(apiOrigin+'/oauth/request?request='+encodeURIComponent(requestId),{signal:controller.signal}));}
+ try{info=await json(await fetch(apiOrigin+'/oauth/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request:requestId}),signal:controller.signal}));}
  catch(e){root.innerHTML=`<section class="card"><h1>Conexão indisponível</h1><p role="alert">${h((e as Error).message)}</p><p>Inicie outra conexão no cliente.</p></section>`;return ()=>controller.abort();}
  function render(message=''){
   if(controller.signal.aborted)return;
-  root.innerHTML=`<section class="card"><h1>Conectar ao Um</h1><h2>${h(info.clientName)}</h2><p>Destino da autorização: <span dir="ltr">${h(new URL(info.redirectUri).origin)}</span></p><p>${info.permission==='write'?'Este cliente solicita ler e alterar os dados do Um que você pode acessar.':'Este cliente solicita somente leitura dos dados do Um que você pode acessar.'}</p><p>Você pode retirar essa autorização pela Conta.</p>
+  root.innerHTML=`<section class="card"><h1>Conectar ao Um</h1><h2>${h(info.clientName)}</h2><p>Destino da autorização: <span dir="ltr">${h(info.redirectUri)}</span></p><p>${info.permission==='write'?'Este cliente solicita ler e alterar os dados do Um que você pode acessar.':'Este cliente solicita somente leitura dos dados do Um que você pode acessar.'}</p><p>Você pode retirar essa autorização pela Conta.</p>
   ${session?`<p>Conta: ${h(session.user.email)}</p><div class="submit-row">${iconButton('ready-state','Autorizar conexão','consent-allow')}${iconButton('remove-state','Negar conexão','consent-deny')}</div>`:`<form id="consent-login"><p>Entre na conta que deseja conectar.</p><label class="field">E-mail<input name="email" type="email" autocomplete="username" required></label><label class="field">Senha<input name="password" type="password" autocomplete="current-password" required></label><div class="submit-row">${iconButton('sign-in','Entrar para autorizar','consent-login')}${iconButton('remove-state','Negar conexão','consent-deny')}</div></form>`}
   <p role="status" id="consent-status">${h(message)}</p></section>`;
  }
@@ -29,7 +29,7 @@ export async function mountConsent(root:HTMLElement,requestId:string):Promise<()
    const result=await json(await fetch(apiOrigin+'/oauth/consent',{method:'POST',headers:{'Content-Type':'application/json',...(session?{Authorization:'Bearer '+session.access_token}:{})},body:JSON.stringify({request:requestId,decision:action==='consent-allow'?'allow':'deny',...(action==='consent-allow'?{refresh_token:session!.refresh_token}:{})}),signal:controller.signal}));
    const target=new URL(result.redirectUri),registered=new URL(info.redirectUri);if(target.origin!==registered.origin||target.pathname!==registered.pathname)throw Error('Destino incompatível com a solicitação.');
    approved=action==='consent-allow';if(!approved&&session)await auth.signOut({scope:'local'});session=null;location.assign(target.href);
-  }catch(e){status((e as Error).message);}finally{busy=false;root.querySelectorAll<HTMLButtonElement>('button').forEach(b=>b.disabled=false);}
+  }catch(e){if(action==='consent-allow'){session=null;await auth.signOut({scope:'local'}).catch(()=>{});render((e as Error).message+' Entre novamente antes de tentar autorizar.');}else status((e as Error).message);}finally{busy=false;root.querySelectorAll<HTMLButtonElement>('button').forEach(b=>b.disabled=false);}
  }
  render();root.addEventListener('click',e=>{const button=(e.target as Element).closest<HTMLElement>('[data-action]');if(button?.dataset.action?.startsWith('consent-')){e.preventDefault();void act(button.dataset.action);}},{signal:controller.signal});
  root.addEventListener('submit',e=>{e.preventDefault();void act('consent-login');},{signal:controller.signal});

@@ -22,6 +22,8 @@ function exchange(client:any,flow:any,changes:any={}){return request('/oauth/tok
 test('OAuth isolado liga consentimento, PKCE, recurso, limites de leitura e revogação sem reativar tokens antigos',async()=>{
  const metadata=await (await request('/.well-known/openid-configuration')).json() as any;assert.deepEqual(metadata.code_challenge_methods_supported,['S256']);assert.equal(metadata.issuer,origin);
  const client=await register(),flow=await consent(client);
+ await assert.rejects(execute('account_grant_set',{operationId:randomUUID(),clientId:randomUUID(),permission:'write'},flow.account.identity),/Cliente de autorização indisponível/);
+ assert.equal(((await execute('account_grants',{},flow.account.identity)) as any).items[0].active,true);
  assert.equal((await exchange(client,flow,{resource:'https://another.example.test/mcp'})).status,400);
  assert.equal((await exchange(client,flow,{code_verifier:randomBytes(32).toString('base64url')})).status,400);
  const response=await exchange(client,flow);assert.equal(response.status,200);const tokens=await response.json() as any;assert.equal(tokens.scope,'um.read');
@@ -46,10 +48,14 @@ test('renovação rota credenciais, reduz escopo e detecta reutilização; nega�
  assert.equal((await request('/oauth/token',{...args,refresh_token:next.refresh_token,scope:'um.write'},undefined,true)).status,400);
  const grant=(await ctx.admin.query('select grant_id from um.oauth_tokens where hash=$1',[sha(next.access_token)])).rows[0];
  assert.equal((await request('/oauth/token',args,undefined,true)).status,400);assert.ok((await ctx.admin.query('select revoked_at from um.oauth_grants where id=$1',[grant.grant_id])).rows[0].revoked_at);await assert.rejects(authenticateMcp('Bearer '+next.access_token),/revogada/);
+ assert.equal(((await execute('account_grants',{},flow.account.identity)) as any).items[0].active,false);
  const denied=await authorize(client),account=await ctx.accountSession();const denial=await request('/oauth/consent',{request:denied.id,decision:'deny'},account.session.access_token);assert.equal(denial.status,200);const callback=new URL((await denial.json() as any).redirectUri);assert.equal(callback.searchParams.get('error'),'access_denied');assert.equal(callback.searchParams.has('code'),false);
  const invalid={...denied.params,redirect_uri:'https://attacker.example.test/callback'};assert.equal((await request('/oauth/authorize?'+new URLSearchParams(invalid))).status,400);
  const foreign=await authorize(client);await ctx.admin.query("update um.oauth_requests set request=jsonb_set(request,'{resource}',to_jsonb($2::text)) where id_hash=$1",[sha(foreign.id),'https://another.example.test/mcp']);
- assert.equal((await request('/oauth/request?request='+foreign.id)).status,400);
+ assert.equal((await request('/oauth/request',{request:foreign.id})).status,400);
+ assert.equal((await request('/oauth/request?request='+foreign.id)).status,404);
  assert.equal((await request('/oauth/consent',{request:foreign.id,decision:'deny'})).status,400);
+ let refreshCalls=0;const actualFetch=globalThis.fetch;globalThis.fetch=async(input,init)=>{if(String(input).includes('grant_type=refresh_token'))refreshCalls++;return actualFetch(input,init);};
+ try{assert.equal((await request('/oauth/consent',{request:foreign.id,decision:'allow',refresh_token:account.session.refresh_token},account.session.access_token)).status,400);assert.equal(refreshCalls,0);}finally{globalThis.fetch=actualFetch;}
  assert.equal((await ctx.admin.query('select used_at from um.oauth_requests where id_hash=$1',[sha(foreign.id)])).rows[0].used_at,null);
 });

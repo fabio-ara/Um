@@ -46,7 +46,9 @@ async function issueTokens(db:Transaction,grant:any,permission:'read'|'write'){c
 export async function accountClients(identity:Identity){
  ensure(!identity.clientId,'FORBIDDEN','Gerencie autorizações pela própria conta.',403);
  await transaction(identity,async()=>{});
- return {items:(await serverTransaction(db=>db.query('select g.client_id,g.permission,c.name from um.client_grants g left join um.oauth_clients c on c.id=g.client_id where g.account_id=$1 order by c.name,g.client_id',[identity.id]))).rows};
+ return {items:(await serverTransaction(db=>db.query(`select g.client_id,g.permission,c.name,
+  exists(select 1 from um.oauth_grants a where a.account_id=g.account_id and a.client_id=g.client_id and a.revoked_at is null and a.expires_at>now() and um.oauth_session_active(a.account_id,a.session_id)) active
+  from um.client_grants g join um.oauth_clients c on c.id=g.client_id where g.account_id=$1 order by c.name,g.client_id`,[identity.id]))).rows};
 }
 
 export async function authenticateMcp(header:string|undefined):Promise<Identity>{
@@ -77,18 +79,20 @@ export async function oauthHandler(request:Request):Promise<Response|null>{
    await serverTransaction(async db=>{const client=(await db.query('select * from um.oauth_clients where id=$1',[a.client_id])).rows[0];ensure(client?.redirect_uris.includes(a.redirect_uri),'invalid_request','Redirecionamento não registrado.');await db.query("delete from um.oauth_requests where expires_at<now()-interval '1 day'");const recent=(await db.query('select count(*)::int count from um.oauth_requests where client_id=$1 and expires_at>now()',[a.client_id])).rows[0].count;ensure(recent<30,'temporarily_unavailable','Aguarde para iniciar outra autorização.',429);await db.query("insert into um.oauth_requests values($1,$2,$3,now()+interval '10 minutes',null)",[digest(id),a.client_id,JSON.stringify({...a,permission:access})]);});
    const destination=new URL(config.origin);destination.hash=new URLSearchParams({authorize:id}).toString();return redirect(destination.href);
   }
-  if(request.method==='GET'&&path==='/oauth/request'){
-   const id=credential.parse(query(url).request);const row=(await serverTransaction(db=>db.query('select r.request,c.name from um.oauth_requests r join um.oauth_clients c on c.id=r.client_id where r.id_hash=$1 and r.used_at is null and r.expires_at>now()',[digest(id)]))).rows[0];ensure(row&&row.request.resource===resource(),'invalid_request','Solicitação expirada, utilizada ou destinada a outro recurso.');return reply({clientName:row.name,redirectUri:row.request.redirect_uri,permission:row.request.permission,resource:row.request.resource});
+  if(request.method==='POST'&&path==='/oauth/request'){
+   const id=z.strictObject({request:credential}).parse(await body(request)).request;const row=(await serverTransaction(db=>db.query('select r.request,c.name from um.oauth_requests r join um.oauth_clients c on c.id=r.client_id where r.id_hash=$1 and r.used_at is null and r.expires_at>now()',[digest(id)]))).rows[0];ensure(row&&row.request.resource===resource(),'invalid_request','Solicitação expirada, utilizada ou destinada a outro recurso.');return reply({clientName:row.name,redirectUri:row.request.redirect_uri,permission:row.request.permission,resource:row.request.resource});
   }
   if(request.method==='POST'&&path==='/oauth/consent'){
    const a=z.strictObject({request:credential,decision:z.enum(['allow','deny']),refresh_token:z.string().max(4096).optional()}).parse(await body(request));
    const identity=a.decision==='allow'?await authenticate(request.headers.get('authorization')||undefined):null;if(identity){ensure(!identity.clientId,'FORBIDDEN','Consentimento exige a conta.',403);await transaction(identity,async()=>{});}
    // Denial never stores credentials. Approval verifies a dedicated, renewable
    // account session; the UI creates it without sharing its persisted app session.
-   const renewed=a.decision==='allow'?await renewSession(a.refresh_token||''):null;
-   if(renewed)ensure(renewed.identity.id===identity!.id&&renewed.identity.sessionId===identity!.sessionId,'invalid_grant','Sessão de consentimento incompatível.',401);
    return await serverTransaction(async db=>{
-    const row=(await db.query('select * from um.oauth_requests where id_hash=$1 and used_at is null and expires_at>now() for update',[digest(a.request)])).rows[0];ensure(row&&row.request.resource===resource(),'invalid_request','Solicitação expirada, utilizada ou destinada a outro recurso.');await db.query('update um.oauth_requests set used_at=now() where id_hash=$1',[digest(a.request)]);
+    const row=(await db.query('select * from um.oauth_requests where id_hash=$1 and used_at is null and expires_at>now() for update',[digest(a.request)])).rows[0];ensure(row&&row.request.resource===resource(),'invalid_request','Solicitação expirada, utilizada ou destinada a outro recurso.');
+    // Do not rotate an external session for an expired, reused or foreign request.
+    const renewed=a.decision==='allow'?await renewSession(a.refresh_token||''):null;
+    if(renewed)ensure(renewed.identity.id===identity!.id&&renewed.identity.sessionId===identity!.sessionId,'invalid_grant','Sessão de consentimento incompatível.',401);
+    await db.query('update um.oauth_requests set used_at=now() where id_hash=$1',[digest(a.request)]);
     if(a.decision==='deny')return reply({redirectUri:resultUrl(row.request,{error:'access_denied'})});
     const id=randomUUID(),code=opaque();await db.query("insert into um.oauth_grants values($1,$2,$3,$4,$5,$6,$7,now()+interval '30 days',null)",[id,row.client_id,identity!.id,identity!.sessionId,row.request.permission,resource(),seal(id,renewed!.session)]);
     await db.query("insert into um.oauth_tokens values($1,$2,'code',now()+interval '2 minutes',null,$3)",[digest(code),id,JSON.stringify(row.request)]);

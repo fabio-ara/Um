@@ -23,6 +23,9 @@ test('Storage real separa leitura de remoção, preserva comum e limpa órfãos 
  const client=(actor:any)=>createClient(config.storageUrl!,config.storageKey!,{global:{headers:{Authorization:'Bearer '+actor.accessToken}},auth:{persistSession:false,autoRefreshToken:false}}).storage.from(config.bucket);
  let completed=false;
  try{
+  // Simulates a permissive policy from another product. The Um-specific
+  // restrictive policy must still enforce every negative test below.
+  await ctx.admin.query("create policy um_test_broad_bypass on storage.objects for all to authenticated using(bucket_id='um-private') with check(bucket_id='um-private')");
   const author=await ctx.account(),holder=await ctx.account(),stranger=await ctx.account();
   const profileId=(await call(author,'profile_create',{operationId:uuid(),fields:{name:'Storage sintético'}})).result.profileId;
   const invitation=await call(author,'invite_create',{operationId:uuid(),profileId});await call(holder,'invite_accept',{operationId:uuid(),token:invitation.result.token});
@@ -55,6 +58,7 @@ test('Storage real separa leitura de remoção, preserva comum e limpa órfãos 
   for(const file of [personal,common,orphan])assert.ok(!physical().includes('/'+file.path+'/'));
   completed=true;
  }finally{
+  await ctx.admin.query('drop policy if exists um_test_broad_bypass on storage.objects');
   Object.assign(config,saved);gateway.closeAllConnections();await new Promise<void>(resolve=>gateway.close(()=>resolve()));
   // On failure, preserve the synthetic fixture for diagnosis instead of deleting
   // its authorization metadata and stranding real Storage bytes.

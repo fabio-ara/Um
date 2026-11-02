@@ -28,12 +28,15 @@ Para a prova local de Storage, inicialize primeiro o compose e as migrações Um
 `scripts/local-storage-setup.ts` gera configuração privada para Storage API
 `public.ecr.aws/supabase/storage-api:v1.73.1`, na rede `um_default`, porta local
 4422 e volume exclusivo. Aplique `scripts/local-storage-bootstrap.sql` somente
-ao banco local `um`, seguido de `supabase/storage/um-private.sql`. O bootstrap
+ao banco local `um`, seguido de `supabase/storage/um-private.sql` e
+`supabase/storage/um-private-hardening.sql`, nessa ordem. O bootstrap
 reproduz os papéis internos do Supabase; não é uma migração hospedada.
 
 Execute `tests/storage.integration.test.ts` com `UM_STORAGE_PROOF=1`. A prova usa
 Auth/PostgreSQL/Storage reais, um prefixo HTTP local e uma interrupção explícita
-para verificar retomada. Ela também inspeciona o volume do contêiner `um-storage`.
+para verificar retomada. Uma política permissiva adicional simula um produto
+vizinho e confirma que a política restritiva Um continua exigindo sua autorização.
+A prova também inspeciona o volume do contêiner `um-storage`.
 `tests/oauth.browser.ts` aceita `UM_PROOF_API_ORIGIN` e `UM_PROOF_APP_ORIGIN` para
 exercitar o mesmo fluxo no Node e no Deno. Carregue `.env` ao iniciar o executor
 das provas de navegador. Nenhuma dessas provas substitui o host ChatGPT, backend
