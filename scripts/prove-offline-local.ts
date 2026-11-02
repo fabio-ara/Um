@@ -26,7 +26,7 @@ async function remote(task:string,args:any){const r=await fetch(api+'/api/'+task
 try{
  console.log("Stage: seed real cache through dev modules");await start();let page=await browser();await page.goto(origin);
  await page.getByRole('button',{name:'Conta',exact:true}).click();await page.getByLabel('E-mail',{exact:true}).fill(student.credentials.email);await page.getByLabel('Senha',{exact:true}).fill(student.credentials.password);await page.getByRole('button',{name:'Entrar',exact:true}).click();
- await expect(page.getByRole('button',{name:'Abrir estudo',exact:true})).toBeVisible();await page.getByRole('button',{name:'Abrir estudo',exact:true}).click();await expect(page.getByRole('region',{name:'Leitor de estudo'})).toBeVisible();
+ await expect(page.locator(`[data-action=reader][data-project="${demo.projectId}"]`)).toBeVisible();await page.locator(`[data-action=reader][data-project="${demo.projectId}"]`).click();await expect(page.getByRole('region',{name:'Leitor de estudo'})).toBeVisible();
  const packages=[];
  for(const profileId of [null,student.profileId]){
   const manifest=await remote('bundle_get',{projectId:demo.projectId,profileId}),files:Record<string,number[]>={};
@@ -36,11 +36,11 @@ try{
  await page.evaluate(async({packages,student}:any)=>{const url='/src/web/offline.ts';const {openOffline}=await import(url);const store=await openOffline(student.accountId,student.profileId);for(const p of packages)await store.install(p.manifest,async(f:any)=>new Uint8Array(p.files[f.path]));store.close();},{packages,student:{accountId:student.accountId,profileId:student.profileId}});
  await context.close();context=null;await stop();
  console.log("Stage: built shell online");execFileSync(process.execPath,[vite,'build'],{stdio:'pipe',windowsHide:true});await start(true);
- page=await browser();await page.goto(origin+'/Um/');await expect(page.getByRole('button',{name:'Abrir estudo',exact:true})).toBeVisible();
+ page=await browser();await page.goto(origin+'/Um/');await expect(page.locator(`[data-action=reader][data-project="${demo.projectId}"]`)).toBeVisible();
  await page.evaluate(async()=>{await navigator.serviceWorker.ready;if(!navigator.serviceWorker.controller)await new Promise<void>(r=>navigator.serviceWorker.addEventListener('controllerchange',()=>r(),{once:true}));});
  await context.close();context=null;
  console.log('Stage: new offline browser process');page=await browser();await context.setOffline(true);await page.goto(origin+'/Um/');
- await expect(page.getByRole('button',{name:'Abrir estudo',exact:true})).toBeVisible();await page.getByRole('button',{name:'Abrir estudo',exact:true}).click();await expect(page.getByRole('region',{name:'Leitor de estudo'})).toBeVisible();
+ await expect(page.locator(`[data-action=reader][data-project="${demo.projectId}"]`)).toBeVisible();await page.locator(`[data-action=reader][data-project="${demo.projectId}"]`).click();await expect(page.getByRole('region',{name:'Leitor de estudo'})).toBeVisible();
  await page.locator('.tab-list>summary').click();await page.getByRole('tab',{name:'Persuadir e dizer a verdade',exact:true}).click();await page.getByRole('button',{name:'Abrir fontes',exact:true}).click();await page.getByRole('button',{name:'Abrir fonte',exact:true}).first().click();
  await expect(page.locator('.source-block').first()).toContainText('ὅτι μὲν ὑμεῖς');
  await page.locator('.source-block').first().evaluate((el:HTMLElement)=>{const range=document.createRange();range.selectNodeContents(el);const selection=getSelection()!;selection.removeAllRanges();selection.addRange(range);});
@@ -48,7 +48,7 @@ try{
  await page.locator('.tab-list>summary').click();await page.getByRole('tab',{name:'Persuadir e dizer a verdade',exact:true}).click();await page.getByRole('button',{name:/Práticas|Praticar|Prática/}).first().click();await page.getByRole('button',{name:'Praticar todas',exact:true}).click();await page.getByRole('button',{name:'Contar quantas pessoas foram convencidas.',exact:true}).click();await expect(page.locator('[data-role=practice-feedback]')).toContainText('adesão');
  await page.screenshot({path:'.local/proofs/offline-production-practice.png'});
  await page.getByRole('button',{name:'Meus estudos',exact:true}).click();await context.close();context=null;
- page=await browser();await context.setOffline(true);await page.goto(origin+'/Um/');await page.getByRole('button',{name:'Abrir estudo',exact:true}).click();await expect(page.getByRole('region',{name:'Leitor de estudo'})).toBeVisible();
+ page=await browser();await context.setOffline(true);await page.goto(origin+'/Um/');await page.locator(`[data-action=reader][data-project="${demo.projectId}"]`).click();await expect(page.getByRole('region',{name:'Leitor de estudo'})).toBeVisible();
  await page.locator('.tab-list>summary').click();await expect(page.getByRole('tab',{name:/texto grego/})).toBeVisible();await page.getByRole('tab',{name:'Persuadir e dizer a verdade',exact:true}).click();await page.getByRole('button',{name:/Notas/}).first().click();await expect(page.getByText('Nota criada sem rede, preservada após reinício.',{exact:true})).toBeVisible();
  await page.screenshot({path:'.local/proofs/offline-production-restart.png'});
  await writeFile('.local/proofs/offline-production-restart.json',JSON.stringify({at:new Date().toISOString(),environment:'Chrome real, persistent profile, separate browser processes, built Vite shell and SW, IndexedDB real, offline context',profile,projectId:demo.projectId,packageRevisions:packages.map(p=>({profileId:p.manifest.profileId,revision:p.manifest.revision})),result:'pass',limits:['Local backend only','Packages acquired by Node HTTP and installed through real OfflineStore, no browser download UI','No remote-host or Android claim']},null,2));

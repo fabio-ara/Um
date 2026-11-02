@@ -6,7 +6,7 @@ test('estudante real local lê fonte, pratica com retorno e reabre abas persisti
  await page.goto('/');await page.getByRole('button',{name:'Conta',exact:true}).click();
  await page.getByLabel('E-mail',{exact:true}).fill(demo.students[0].credentials.email);await page.getByLabel('Senha',{exact:true}).fill(demo.students[0].credentials.password);await page.getByRole('button',{name:'Entrar',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Meus estudos',exact:true})).toBeVisible();
- await page.getByRole('button',{name:'Abrir estudo',exact:true}).click();await expect(page.getByRole('region',{name:'Leitor de estudo'})).toBeVisible();
+ await page.locator(`[data-action=reader][data-project="${demo.projectId}"]`).click();await expect(page.getByRole('region',{name:'Leitor de estudo'})).toBeVisible();
  await page.locator('.tab-list>summary').click();
  await page.getByRole('tab',{name:'Persuadir e dizer a verdade',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Persuadir e dizer a verdade',exact:true}).first()).toBeVisible();
@@ -27,7 +27,7 @@ test('estudante real local lê fonte, pratica com retorno e reabre abas persisti
  await page.screenshot({path:'.local/proofs/practice-390-dark.png'});
  await expect.poll(()=>page.evaluate(async({projectId,profileId})=>{const url='/src/web/api.ts';const {remote}=await import(url);const r=await remote('reader_records',{projectId,profileId,kind:'state'});return r.items.some((x:any)=>x.data.tabs.some((t:any)=>t.id===x.data.activeTabId&&t.kind==='unit'));},{projectId:demo.projectId,profileId:demo.students[0].profileId})).toBe(true);
  await page.reload();
- await page.getByRole('button',{name:'Abrir estudo',exact:true}).click();
+ await page.locator(`[data-action=reader][data-project="${demo.projectId}"]`).click();
  await page.locator('.tab-list>summary').click();
  await expect(page.getByRole('tab',{name:/Fontes/})).toBeVisible();
  await expect(page.getByRole('tab',{name:/texto grego/})).toBeVisible();

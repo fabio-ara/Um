@@ -25,7 +25,7 @@ try{
  if(await c.evaluate('!!document.querySelector("#login")')){
   await c.evaluate(`(()=>{const v=${JSON.stringify(demo.students[0].credentials)};document.querySelector('[name=email]').value=v.email;document.querySelector('[name=password]').value=v.password;document.querySelector('[data-action=signin]').click();})()`);
  }
- await c.click('[data-action="home"]');await c.click('[data-action="reader"]');await c.wait('!!document.querySelector(".reader-shell .tab-list")');
+ await c.click('[data-action="home"]');await c.click(`[data-action="reader"][data-project="${demo.projectId}"]`);await c.wait('!!document.querySelector(".reader-shell .tab-list")');
  await c.click('.tab-list>summary');await c.evaluate(`[...document.querySelectorAll('[role=tab]')].find(x=>x.textContent==='Persuadir e dizer a verdade').click()`);
 }catch(error){
  // A tab's stable data shape is inspected rather than guessed by later runs.
@@ -38,7 +38,7 @@ await c.evaluate('window.dispatchEvent(new Event("um-flush"))');await new Promis
 run(['shell','am','force-stop',pkg]);run(['reverse','--remove','tcp:4417']);run(['shell','am','start','-n',pkg+'/com.fabioara.um.MainActivity']);
 c=await attach();
 try{
- await c.click('[data-action="reader"]');await c.wait('!!document.querySelector(".source-block")');assert.ok(await c.evaluate('document.querySelector(".source-block").textContent.includes("ὅτι μὲν ὑμεῖς")'));
+ await c.click(`[data-action="reader"][data-project="${demo.projectId}"]`);await c.wait('!!document.querySelector(".source-block")');assert.ok(await c.evaluate('document.querySelector(".source-block").textContent.includes("ὅτι μὲν ὑμεῖς")'));
  await writeFile('.local/proofs/android-offline-restart.png',run(['exec-out','screencap','-p']));
  await writeFile('.local/proofs/android-runtime.json',JSON.stringify({at:new Date().toISOString(),package:pkg,android:run(['shell','getprop','ro.build.version.release']).toString().trim(),api:run(['shell','getprop','ro.build.version.sdk']).toString().trim(),result:'pass',proof:'Real WebView, authentication, Greek source, force-stop, backend transport removed, restart retained tab and cached content',limits:['Debug APK','Local backend','No production signing or hosted integration claim']},null,2));console.log('PASS: Android source/tab persisted through process death and absent backend.');
 }finally{c.ws.close();run(['reverse','tcp:4417','tcp:4417']);}
