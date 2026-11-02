@@ -2,6 +2,14 @@ import {test,expect} from '@playwright/test';
 import {readFile,mkdir,writeFile} from 'node:fs/promises';
 const demo=JSON.parse(await readFile('.local/demo.json','utf8'));
 
+test('primeira abertura sem configuração mostra erro acessível e permite tentar novamente',async({page})=>{
+ await page.setViewportSize({width:320,height:844});
+ await page.route('**/api/config',route=>route.fulfill({status:503,body:'Unavailable'}));await page.goto('/');
+ await expect(page.getByRole('heading',{name:'Não foi possível abrir o Um'})).toBeVisible();await expect(page.locator('main')).toBeFocused();
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:'.local/proofs/first-open-error-320.png'});
+ await page.unroute('**/api/config');await page.getByRole('button',{name:'Tentar novamente'}).click();await expect(page.getByRole('button',{name:'Conta',exact:true})).toBeVisible();
+});
+
 test('dica icon-only por teclado e toque longo preserva a ação de toque curto',async({page,context})=>{
  await page.setViewportSize({width:320,height:844});await page.goto('/');
  await page.keyboard.press('Tab');await expect(page.getByRole('link',{name:'Ir ao conteúdo'})).toBeFocused();

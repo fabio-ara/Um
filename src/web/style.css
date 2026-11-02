@@ -13,3 +13,4 @@
 .card{padding:12px}.card h1{font-size:1.125rem;line-height:1.4;margin:0 0 12px}
 button[data-action=submit]{background:var(--action-primary);color:var(--text-on-action)}
 .icon-hint{position:fixed;z-index:1000;max-width:calc(100vw - 16px);padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-control);background:var(--surface);color:var(--text);font-size:.875rem;line-height:1.4;box-shadow:0 3px 12px #0003;pointer-events:none;overflow-wrap:anywhere}
+#retry-open{min-height:44px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-control);background:var(--surface);color:var(--text)}

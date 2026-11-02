@@ -34,6 +34,10 @@ O gate Chrome executou 27 casos: 25 passaram diretamente; a corrida de recarga d
 comentários e um seletor Unicode foram corrigidos, e os dois casos passaram na
 revalidação focal. O shell de produção preservou fontes, prática, notas e abas
 offline após reinício em processos distintos. Não foi repetida a suíte integral.
+O primeiro acesso sem configuração pública disponível apresenta erro acessível
+e permite tentar novamente. O OAuth/MCP também foi validado no Deno com prefixo
+de função; o Android 16/API36 manteve fonte grega e aba após encerramento do
+processo, preparação explícita do pacote e retirada do transporte do backend.
 
 Ainda faltam a revisão editorial independente final, leitor de tela/ampliação
 comprovados e provas hospedadas/assinadas. Não há promoção autorizada pelos gates

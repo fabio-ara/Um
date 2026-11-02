@@ -35,12 +35,14 @@ try{
 await c.click('[data-action="open-sources"]');await c.click('[data-action="open-source"]');await c.wait('document.querySelector(".source-block")?.textContent.includes("ὅτι μὲν ὑμεῖς")');
 await c.click('[data-action="sync"]');await c.click('[data-action="prepare-offline"]');
 await c.wait('document.querySelector("#live")?.textContent.includes("Estudo preparado neste dispositivo")');
+await c.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
 await writeFile('.local/proofs/android-source.png',run(['exec-out','screencap','-p']));
 await c.evaluate('window.dispatchEvent(new Event("um-flush"))');await new Promise(r=>setTimeout(r,1200));c.ws.close();
 run(['shell','am','force-stop',pkg]);run(['reverse','--remove','tcp:4417']);run(['shell','am','start','-n',pkg+'/com.fabioara.um.MainActivity']);
 c=await attach();
 try{
  await c.click(`[data-action="reader"][data-project="${demo.projectId}"]`);await c.wait('!!document.querySelector(".source-block")');assert.ok(await c.evaluate('document.querySelector(".source-block").textContent.includes("ὅτι μὲν ὑμεῖς")'));
+ await c.evaluate('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
  await writeFile('.local/proofs/android-offline-restart.png',run(['exec-out','screencap','-p']));
  await writeFile('.local/proofs/android-runtime.json',JSON.stringify({at:new Date().toISOString(),package:pkg,android:run(['shell','getprop','ro.build.version.release']).toString().trim(),api:run(['shell','getprop','ro.build.version.sdk']).toString().trim(),result:'pass',proof:'Real WebView, authentication, Greek source, force-stop, backend transport removed, restart retained tab and cached content',limits:['Debug APK','Local backend','No production signing or hosted integration claim']},null,2));console.log('PASS: Android source/tab persisted through process death and absent backend.');
 }finally{c.ws.close();run(['reverse','tcp:4417','tcp:4417']);}
