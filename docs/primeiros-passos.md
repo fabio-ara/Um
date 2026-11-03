@@ -19,7 +19,7 @@ O caminho abaixo segue a [documentação oficial do ChatGPT](https://developers.
 
    `https://jrfkphuhcseqmratijjr.supabase.co/functions/v1/um-api/mcp`
 
-3. Escolha a autenticação **OAuth** e entre com a mesma conta usada no aplicativo. O host apresenta seus próprios avisos e pede consentimento; autorize a leitura e a escrita.
+3. Escolha a autenticação **OAuth**. Em **Configurações avançadas de OAuth**, mantenha o registro dinâmico (DCR), os escopos `um.read` e `um.write` e desative **OIDC habilitado**, caso o ChatGPT o tenha marcado: o Um usa OAuth sem OpenID Connect. Entre com a mesma conta usada no aplicativo. O host apresenta seus próprios avisos e pede consentimento; autorize a leitura e a escrita.
 4. Marque **Create as a plugin**, instale e, em uma conversa nova, selecione **@Um**.
 
 O aplicativo fica em `https://fabio-ara.github.io/Um/`.
