@@ -12,7 +12,7 @@ Se outra pessoa está preparando o estudo para você, ela cria o perfil e gera u
 
 ## Conectar o Um ao ChatGPT
 
-O caminho abaixo segue a [documentação oficial do ChatGPT](https://developers.openai.com/plugins/deploy/connect-chatgpt), conferida em 2 de novembro de 2026. A homologação do Um no ChatGPT ainda está pendente; a disponibilidade pode variar conforme a conta e as regras do espaço de trabalho.
+O caminho abaixo segue a [documentação oficial do ChatGPT](https://developers.openai.com/plugins/deploy/connect-chatgpt), conferida em 2 de novembro de 2026. A conexão e a retomada de autoria do Um foram verificadas no ChatGPT; a disponibilidade pode variar conforme a conta e as regras do espaço de trabalho. Consulte o [estado da entrega](../STATUS.md) para o alcance das provas e as pendências.
 
 1. No ChatGPT, abra **Plugins**, escolha **+** e **Adicionar servidor MCP personalizado**.
 2. Informe o nome **Um**, uma descrição e o endereço público do servidor, terminado em `/mcp`:
@@ -41,7 +41,7 @@ Dois pedidos naturais para começar:
 
 O login é por e-mail e senha. A conta existente do AraLearn compartilha a autenticação do Um. Se esquecer a senha, escolha **Recuperar acesso** na tela de Conta. O link enviado por e-mail abre o site do Um para escolher uma nova senha.
 
-No serviço hospedado, o envio de e-mails ainda depende da configuração de um provedor SMTP. O serviço padrão restringe os destinatários à equipe do projeto; o cadastro de novas contas e a recuperação para outros endereços não estão liberados. Contas já confirmadas podem entrar normalmente. Essa limitação é distinta dos convites de perfil, que são compartilhados manualmente.
+O serviço hospedado já envia os e-mails de confirmação e recuperação por SMTP configurado. Confirme o endereço pelo link recebido para concluir um novo cadastro; confira também a pasta de spam. Esses e-mails são distintos dos convites de perfil, que são compartilhados manualmente por quem prepara o estudo. Para criar seu próprio perfil, você não precisa de convite.
 
 ## Limites úteis
 
