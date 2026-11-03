@@ -19,7 +19,7 @@ val stageWeb by tasks.registering(Exec::class) {
 }
 android {
  namespace="com.fabioara.um";compileSdk=36
- defaultConfig { applicationId="com.fabioara.um";minSdk=24;targetSdk=36;versionCode=2;versionName="0.1.1" }
+ defaultConfig { applicationId="com.fabioara.um";minSdk=24;targetSdk=36;versionCode=3;versionName="0.1.2" }
  signingConfigs { if(signingReady)create("release") { storeFile=file(signingPath);storePassword=signingStorePassword;keyAlias=signingAlias;keyPassword=signingKeyPassword } }
  buildTypes {
   release { isMinifyEnabled=false;if(signingReady)signingConfig=signingConfigs.getByName("release") }

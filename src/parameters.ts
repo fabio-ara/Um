@@ -5,7 +5,12 @@ import {ensure} from './errors.ts';
 
 // A present key is a fixed choice. Missing keys remain automatic. Independent
 // requirements accumulate across scopes; overriding a choice never erases them.
-const choices=z.record(z.string().regex(/^[\p{L}\p{N}_-]{1,80}$/u).refine(k=>!['__proto__','constructor','prototype'].includes(k)),z.json()).refine(v=>Object.keys(v).length<=80&&JSON.stringify(v).length<=16000,'Configuração extensa demais.');
+// JSON Schema cannot carry the Unicode flag required by this expression.
+// Keep the exact key validation on the server without exporting an unusable
+// pattern to MCP clients (ChatGPT rejects the entire tool catalog otherwise).
+const parameterKey=z.string().describe('Chave de 1 a 80 letras ou números Unicode, _ ou -. Não use __proto__, constructor ou prototype.')
+ .refine(k=>/^[\p{L}\p{N}_-]{1,80}$/u.test(k)&&!['__proto__','constructor','prototype'].includes(k),'Chave de parâmetro inválida.');
+const choices=z.record(parameterKey,z.json()).refine(v=>Object.keys(v).length<=80&&JSON.stringify(v).length<=16000,'Configuração extensa demais.');
 export const configurationSchema=z.strictObject({editorial:choices,instructional:choices});
 export const requirementsSchema=z.array(z.string().trim().min(1).max(1000)).max(50);
 export const intentionSchema=z.string().trim().min(1).max(4000);
