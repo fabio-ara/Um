@@ -7,8 +7,10 @@
   --reader-accent: var(--accent, #2e5d50);
   width: 100%;
   max-width: 430px;
-  height: 100dvh;
-  max-height: 100dvh;
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  position: relative;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -28,85 +30,74 @@
 .reader-shell *::after { box-sizing: border-box; }
 
 .reader-head {
-  flex: 0 0 auto;
-  display: flex;
+  flex: 0 0 56px;
+  min-height: 56px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 10px 12px 8px;
+  gap: 4px;
+  padding: 5px 6px;
   background: var(--reader-surface);
   border-bottom: 1px solid var(--reader-border);
 }
-
 .reader-heading { min-width: 0; }
-.reader-eyebrow {
-  display: block;
-  color: var(--reader-muted);
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
 .reader-heading h1 {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: 1rem;
   line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.reader-head-actions { display: flex; gap: 4px; flex: 0 0 auto; }
-
-.reader-status {
-  flex: 0 0 auto;
-  min-height: 0;
-  padding: 0 12px;
-  color: var(--reader-muted);
-  font-size: 0.78rem;
-}
-.reader-status:not(:empty) { padding-top: 6px; padding-bottom: 6px; border-bottom: 1px solid var(--reader-border); }
-
-.tabstrip {
-  flex: 0 0 auto;
-  display: grid;
-  gap: 6px;
-  padding: 8px 10px;
-  overflow-y: auto;
-  max-height: 35dvh;
-  background: var(--reader-surface);
-  border-bottom: 1px solid var(--reader-border);
-  scrollbar-width: thin;
-}
-.tab {
-  display: inline-flex;
-  align-items: stretch;
-  flex: 0 0 auto;
+.reader-head-actions { display: flex; gap: 2px; }
+.reader-head-actions [data-placeholder] { visibility: hidden; }
+.reader-status-panel {
+  position: absolute;
+  z-index: 5;
+  top: 108px;
+  right: 6px;
+  width: min(300px, calc(100% - 12px));
+  max-height: calc(100% - 120px);
+  overflow: auto;
+  padding: 10px 12px;
   border: 1px solid var(--reader-border);
   border-radius: 10px;
-  overflow: hidden;
+  background: var(--reader-surface);
+  box-shadow: 0 4px 16px #0002;
+  overflow-wrap: anywhere;
+  font-size: .85rem;
+}
+.reader-status-panel p { margin: 0 0 8px; }
+.reader-status-panel p:last-child { margin-bottom: 0; }
+.tab-list { flex: 0 0 52px; min-height: 52px; min-width: 0; }
+.tabstrip {
+  display: flex;
+  align-items: end;
+  flex-wrap: nowrap;
+  gap: 4px;
+  height: 52px;
+  padding: 3px 6px 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
   background: var(--reader-bg);
-  justify-content: space-between;
+  border-bottom: 1px solid var(--reader-border);
+  scrollbar-width: none;
+}
+.tabstrip::-webkit-scrollbar { display: none; }
+.tab {
+  display: flex;
+  flex: 0 0 90px;
+  width: 90px;
+  height: 46px;
+  align-items: center;
+  border: 1px solid var(--reader-border);
+  border-radius: 9px 9px 0 0;
+  background: var(--reader-bg);
 }
 .tab[data-active="true"] { border-color: var(--reader-accent); background: var(--reader-surface); }
-.tab-activate {
-  min-height: 44px;
-  max-width: none;
-  text-align: start;
-  flex: 1;
-  padding: 0 10px;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  font-size: 0.85rem;
-  white-space: normal;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: pointer;
-}
-.tab[data-active="true"] .tab-activate { font-weight: 600; }
-.tab-list{flex:none;border-bottom:1px solid var(--reader-border)}
-.tab-list>summary{padding:10px;cursor:pointer;min-height:44px;max-height:90px;overflow:auto}
-
+.tab-activate { flex: 0 0 44px; }
+.tab[data-active="true"] .tab-activate { color: var(--reader-accent); }
 .reader-main {
   flex: 1 1 auto;
   min-height: 0;
@@ -114,6 +105,8 @@
   overscroll-behavior: contain;
   padding: 12px 12px 40px;
   scrollbar-width: thin;
+  scrollbar-gutter: stable;
+  min-width: 0;
 }
 .reader-main:focus { outline: none; }
 
@@ -160,7 +153,8 @@
   background: var(--reader-bg);
   font-size: 0.86rem;
 }
-.reader-body { font-size: 1rem; line-height: 1.65; }
+.reader-body { font-size: 1rem; line-height: 1.65; overflow-wrap: break-word; }
+.reader-body p { overflow-wrap: break-word; word-break: normal; }
 .reader-body p { margin: 0 0 0.9em; }
 .reader-body p:last-child { margin-bottom: 0; }
 
@@ -223,7 +217,8 @@
   border-color: transparent;
   background: transparent;
 }
-.tab .icon-button { min-width: 38px; min-height: 44px; border-radius: 0; border-left: 1px solid var(--reader-border); }
+.tab .icon-button { width: 44px; height: 44px; min-width: 44px; min-height: 44px; border: 0; border-radius: 6px; }
+.tab .icon-button[data-action="close-tab"] { border-left: 1px solid var(--reader-border); }
 .ui-icon { width: 18px; height: 18px; display: block; }
 
 .button-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 0; }
@@ -295,13 +290,17 @@
 .source-blocks { margin: 8px 0; }
 .source-block {
   white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  word-break: normal;
   font-size: 1rem;
   line-height: 1.62;
   padding: 8px 0;
   border-bottom: 1px solid var(--reader-border);
 }
 .source-block:last-child { border-bottom: 0; }
+/* Reflow visual de prosa sem mudar os caracteres usados nas âncoras. */
+.source-paragraph, .source-heading, .source-unknown { white-space: normal; }
+.source-verse, .source-code, .source-table, .source-list { white-space: pre-wrap; }
 .source-heading { font-weight: 700; font-size: 1.05rem; }
 .source-quote { border-left: 3px solid var(--reader-accent); padding-left: 10px; }
 .source-code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.9rem; background: var(--reader-bg); border-radius: 8px; padding: 10px; }

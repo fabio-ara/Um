@@ -2,7 +2,7 @@ import {test,expect} from '@playwright/test';
 import {readFile,mkdir} from 'node:fs/promises';
 const demo=JSON.parse(await readFile('.local/demo.json','utf8')),theme=JSON.parse(await readFile('.local/demo-theme.json','utf8'));
 test('tema multicultural abre comparação preparada, tradução e apoio pessoal a 320px',async({page})=>{
- const unit=async()=>{const menu=page.locator('.tab-list');if(await menu.getAttribute('open')===null){await menu.locator('summary').focus();await page.keyboard.press('Enter');}await page.getByRole('tab',{name:'Uma aproximação que conserva as diferenças',exact:true}).click();};
+ const unit=async()=>{await page.getByRole('tab',{name:'Uma aproximação que conserva as diferenças',exact:true}).click();};
  await page.setViewportSize({width:320,height:844});await page.emulateMedia({colorScheme:'dark'});await page.goto('/');await page.getByRole('button',{name:'Conta',exact:true}).click();await page.getByLabel('E-mail',{exact:true}).fill(demo.students[0].credentials.email);await page.getByLabel('Senha',{exact:true}).fill(demo.students[0].credentials.password);await page.getByRole('button',{name:'Entrar',exact:true}).click();
  await page.locator(`[data-action=reader][data-project="${theme.projectId}"]`).click();await expect(page.locator('.tab-list')).toBeVisible();await unit();await expect(page.getByRole('heading',{name:'Uma aproximação que conserva as diferenças',exact:true,level:2})).toBeVisible();
  await expect(page.locator('.reader-body')).toContainText('não fornece sozinha o contexto completo');

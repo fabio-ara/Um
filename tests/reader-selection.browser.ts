@@ -15,11 +15,9 @@ test('seleção grega e comparação preparada preservam âncora e origem',async
  await expect(page.getByRole('heading',{name:'Meus estudos',exact:true})).toBeVisible();
  await page.locator(`[data-action=reader][data-project="${demo.projectId}"]`).click();
  await expect(page.getByRole('region',{name:'Leitor de estudo'})).toBeVisible();
- await page.locator('.tab-list>summary').click();
  await page.getByRole('tab',{name:'Persuadir e dizer a verdade',exact:true}).click();
  await expect(page.getByRole('heading',{name:'Persuadir e dizer a verdade',exact:true}).first()).toBeVisible();
  await page.getByRole('button',{name:'Abrir fontes',exact:true}).click();
- await page.locator('.tab-list>summary').click();
  await expect(page.getByRole('tab',{name:/Fontes/})).toBeVisible();
  await page.getByRole('button',{name:'Abrir fonte',exact:true}).first().click();
  await expect(page.locator('.source-block').first()).toContainText('ὅτι μὲν ὑμεῖς');
