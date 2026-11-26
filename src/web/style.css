@@ -15,3 +15,12 @@
 button[data-action=submit]{background:var(--action-primary);color:var(--text-on-action)}
 .icon-hint{position:fixed;z-index:1000;max-width:calc(100vw - 16px);padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius-control);background:var(--surface);color:var(--text);font-size:.875rem;line-height:1.4;box-shadow:0 3px 12px #0003;pointer-events:none;overflow-wrap:anywhere}
 #retry-open{min-height:44px;padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-control);background:var(--surface);color:var(--text)}
+
+/* O leitor ocupa somente o espaço restante da janela, sem uma segunda rolagem. */
+.shell:has(.reader-shell){position:relative;display:grid;grid-template-rows:52px minmax(0,1fr);height:100dvh;max-height:100dvh;padding:0;overflow:hidden}
+.shell:has(.reader-shell)>.topbar{height:52px;padding:0 8px}
+.shell:has(.reader-shell)>.nav{display:none}
+.shell:has(.reader-shell)>#main{min-height:0;min-width:0;overflow:hidden}
+.shell:has(.reader-shell)>#connection-status{position:absolute;z-index:10;top:160px;left:6px;right:6px;max-height:calc(100% - 166px);overflow:auto}
+.shell:has(.reader-shell)>#connection-status:empty{display:none}
+.shell:has(.reader-shell)>#connection-status .card{margin:0;background:var(--surface);box-shadow:0 4px 16px #0002}

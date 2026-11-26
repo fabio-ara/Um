@@ -114,6 +114,7 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
   let stateRevision = 0;
   let saveStatus = '';
   let lastTabRendered = '';
+  let statusOpen = false;
 
   let contentCache = new Map<string, any>();
   let contentPromises = new Map<string, Promise<any>>();
@@ -1270,6 +1271,7 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
     uiAnchors.clear();
     const previousMain = rootEl.querySelector('.reader-main') as HTMLElement | null;
     const previousScroll = previousMain?.scrollTop || 0;
+    const previousTabScroll = rootEl.querySelector<HTMLElement>('.tabstrip')?.scrollLeft || 0;
     const tabChanged = lastTabRendered !== activeTabId;
     const tab = activeTab();
     let body = '';
@@ -1295,17 +1297,18 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
       <section class="reader-shell" aria-label="Leitor de estudo">
         <header class="reader-head">
           <div class="reader-heading">
-            <span class="reader-eyebrow">Leitor</span>
             <h1>${h(tab?.title || 'Estudo')}</h1>
           </div>
           <div class="reader-head-actions">
-            ${originVisible ? iconButton('reposition', 'Voltar à origem', 'tab-origin') : ''}
             ${iconButton('arrow-left', 'Sair do leitor', 'exit')}
-            ${options.onUpdate?iconButton('reset','Conferir e atualizar este estudo','update-study'):''}
+            ${iconButton('reposition', 'Voltar à origem', 'tab-origin', originVisible ? '' : 'disabled data-placeholder="true"')}
+            ${iconButton('reset','Conferir e atualizar este estudo','update-study',options.onUpdate?'':'disabled data-placeholder="true"')}
+            ${iconButton(statuses.length?'cloud-alert':'info','Estado do estudo','reader-status-toggle',`aria-expanded="${statusOpen}" aria-controls="reader-status-panel"`)}
           </div>
         </header>
-        <div class="reader-status" role="status" aria-live="polite">${h(statuses.join(' · '))}</div>
-        ${booted ? renderTabStrip() : ''}
+        <div class="sr-only" role="status" aria-live="polite">${h(statuses.join(' · '))}</div>
+        ${renderTabStrip()}
+        ${statusOpen ? `<aside id="reader-status-panel" class="reader-status-panel" aria-label="Estado do estudo">${statuses.length?statuses.map(status=>`<p>${h(status)}</p>`).join(''):'<p>Nenhuma pendência.</p>'}</aside>` : ''}
         <main class="reader-main" data-role="main" tabindex="-1">${body}</main>
       </section>`;
     for(const el of rootEl.querySelectorAll<HTMLInputElement|HTMLTextAreaElement>('input[data-field],textarea[data-field]')){const draft=inputDrafts.get(el.dataset.field!);if(draft&&!tabChanged){el.value=draft.value;if(draft.focused){el.focus({preventScroll:true});if(draft.start!==null&&draft.end!==null)el.setSelectionRange(draft.start,draft.end);}}}
@@ -1318,18 +1321,31 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
       const desired = forceScrollTop ? 0 : tabChanged ? (tab?.position || 0) : previousScroll;
       main.scrollTop = Math.max(0, desired);
     }
+    const strip = rootEl.querySelector<HTMLElement>('.tabstrip');
+    if (strip) {
+      strip.scrollLeft = previousTabScroll;
+      if (tabChanged) {
+        const selected = strip.querySelector<HTMLElement>('.tab[data-active="true"]');
+        if (selected) {
+          const bounds = strip.getBoundingClientRect(), cell = selected.getBoundingClientRect();
+          if (cell.left < bounds.left) strip.scrollLeft += cell.left - bounds.left;
+          else if (cell.right > bounds.right) strip.scrollLeft += cell.right - bounds.right;
+        }
+      }
+    }
     forceScrollTop = false;
     lastTabRendered = activeTabId;
     focusAfterRender();
   }
 
   function renderTabStrip(): string {
-    return `<details class="tab-list" ${lastTabRendered===activeTabId&&rootEl.querySelector<HTMLDetailsElement>('.tab-list')?.open?'open':''}><summary>${h(activeTab()?.title||'Abas abertas')} <span class="muted">· ${tabs.length} abas</span></summary><nav class="tabstrip" role="tablist" aria-label="Abas abertas">
+    const kinds: Record<ReaderTab['kind'],string> = {unit:'study-unit',resource:'sparkles',sources:'book-text',source:'book-open'};
+    return `<div class="tab-list"><nav class="tabstrip" role="tablist" aria-label="Abas abertas">
       ${tabs.map(tab => `<span class="tab" data-active="${tab.id === activeTabId}">
-        <button type="button" class="tab-activate" role="tab" aria-selected="${tab.id === activeTabId}" data-action="switch-tab" data-tab="${h(tab.id)}" title="${h(tab.title)}">${h(tab.title)}</button>
-        ${iconButton('remove-state', 'Fechar aba', 'close-tab', `data-tab="${h(tab.id)}"`)}
+        <button type="button" class="tab-activate icon-button" role="tab" aria-selected="${tab.id === activeTabId}" aria-label="${h(tab.title)}" data-action="switch-tab" data-tab="${h(tab.id)}">${renderUiIcon(kinds[tab.kind])}</button>
+        ${iconButton('remove-state', 'Fechar aba', 'close-tab', `data-tab="${h(tab.id)}" ${tabs.length<=1?'disabled':''}`)}
       </span>`).join('')}
-    </nav></details>`;
+    </nav></div>`;
   }
 
   function renderUnit(tab: ReaderTab): string {
@@ -1350,12 +1366,11 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
           </select>
         </div>
         <h2 id="unit-title" tabindex="-1">${h(unit.title)}</h2>
-        <p class="muted">${estimate?`Cerca de ${estimate} min de leitura principal restante, pelo ritmo observado.`:'Estimativa de leitura disponível após percorrer uma unidade.'} Prática e exploração são registradas separadamente; tempo não mede aprendizagem.</p>
+        ${estimate?`<p class="muted">Cerca de ${estimate} min de leitura restante.</p>`:''}
         <div class="reader-body" dir="auto">${renderBody(unit.body)}</div>
       </section>
       <section class="reader-card">
         <div class="section-head"><h2>Referências documentais</h2><span class="count">${groups.length} passagem(ns)</span></div>
-        <p class="muted">As passagens citadas ficam agrupadas por passagem na aba de fontes. Relações são apenas as declaradas.</p>
         <button type="button" class="control" data-action="open-sources" data-unit="${h(unit.id)}">Abrir fontes</button>
       </section>
       ${renderResourcesSection(unit)}
@@ -1405,7 +1420,7 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
     else content = `<div class="button-row">
       <button type="button" class="control" data-action="practice-start" data-errors="false">Praticar todas</button>
       <button type="button" class="control" data-action="practice-start" data-errors="true">Refazer erros</button>
-    </div><p class="muted">A prática é separada da leitura e não avança a unidade.</p>`;
+    </div>`;
     return sectionWrap('practice', 'Prática', practice?.questions.length || 0, content);
   }
 
@@ -1827,7 +1842,6 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
         ${offset > 0 ? `<button type="button" class="control" data-action="source-prev" data-tab="${h(tab.id)}" data-offset="${Math.max(0, offset - SOURCE_LIMIT)}">Anterior</button>` : ''}
         ${next !== null ? `<button type="button" class="control" data-action="source-next" data-tab="${h(tab.id)}" data-offset="${next}">Próxima</button>` : ''}
       </div>
-      <p class="muted">Selecione texto com o mouse ou teclado dentro de um bloco. A seleção vira âncora com fonte, revisão e bloco.</p>
       ${renderSelectionPanel(tab)}
     </section>`;
   }
@@ -1854,7 +1868,7 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
     return `<section class="selection-panel" aria-labelledby="selection-title">
       <div class="section-head"><h3 id="selection-title">Seleção</h3><span class="badge">${Array.from(selAnchor.exact).length} caractere(s)</span></div>
       <p class="quote" dir="auto">${h(selAnchor.exact)}</p>
-      <p class="meta-line">Bloco ${h(selAnchor.elementId)} · posições ${selAnchor.start}–${selAnchor.end}</p>
+      <p class="meta-line sr-only">Bloco ${h(selAnchor.elementId)} · posições ${selAnchor.start}–${selAnchor.end}</p>
       <div class="button-row">
         <button type="button" class="control" data-action="toggle-form" data-form-name="note" aria-expanded="${openForm === 'note'}">Nota privada</button>
         <button type="button" class="control" data-action="toggle-form" data-form-name="term" aria-expanded="${openForm === 'term'}">Vocabulário</button>
@@ -1887,6 +1901,7 @@ export async function mountReader(root: HTMLElement, options: Options): Promise<
       case 'switch-tab': switchTab(button.dataset.tab || ''); return;
       case 'close-tab': closeTab(button.dataset.tab || ''); return;
       case 'tab-origin': returnToOrigin(); return;
+      case 'reader-status-toggle': statusOpen = !statusOpen; pendingFocus = '[data-action="reader-status-toggle"]'; render(); return;
       case 'open-sources': {
         const unitId = button.dataset.unit || currentUnitId;
         openTab('sources', unitId, `Fontes · ${unitTitle(unitId)}`, revisionFor(unitId));
